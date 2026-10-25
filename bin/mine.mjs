@@ -122,7 +122,7 @@ switch (cmd) {
     const msg = i > 0 ? argv[i + 1] : null
     if (!msg) die('mine commit -m "message"')
     const mine = mineDirty(l)
-    if (!mine.length) die('nothing of yours to commit')
+    if (!mine.length) die('nothing of yours to commit (edited in this same command? the ledger lands after it ends: run mine commit on its own)')
     const peerFiles = new Set(peers().flatMap(p => Object.keys(p.files)))
     const shared = mine.filter(f => peerFiles.has(f))
     const body = [msg, '', ...(l.ticket ? [`Ticket: ${l.ticket}`] : []), 'Co-Authored-By: Claude <noreply@anthropic.com>'].join('\n')

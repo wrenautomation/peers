@@ -41,6 +41,8 @@ mine close -r "shipped"
 mine ls                    # every live session in this repo
 ```
 
+Edit, then commit, in separate commands: the ledger records a Bash edit after that command ends, so `sed ... && mine commit` sees nothing to commit.
+
 ## Where the state lives
 
 `~/.claude/peers/<encoded repo root>/<session id>.json`. One file per session. No locks. A session file older than 12 hours, or marked ended, is ignored.

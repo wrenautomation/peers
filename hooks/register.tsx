@@ -145,13 +145,17 @@ const peerLine = async ($: any, abs: string, forEdit: boolean): Promise<string |
     lines.push(`${nameOf(p)} edited it ${ago(now - e.last)} ago (${state})`)
   }
   if (lines.length === 0) return null
-  told.set(abs, newest)
   const tail = forEdit ? ' Re-read before you edit. Keep their lines.' : ' Their lines are not yours: leave them.'
   return `peers: ${lines.join('; ')}.${tail}`
 }
 
-const withContext = (r: any, line: string | null) =>
-  line && r && r.deny === undefined && !r.isError ? { ...r, context: [...(r.context ?? []), line] } : r
+// Attach the line to the result, errors included (an Edit refused for a stale
+// read is the usual case), and only then remember that it was told.
+const withContext = (abs: string, r: any, line: string | null) => {
+  if (!line || !r || r.deny !== undefined) return r
+  told.set(abs, Date.now())
+  return { ...r, context: [...(r.context ?? []), line] }
+}
 
 const refreshPeers = async ($: any) => {
   const all = new Set<string>(roots)
@@ -248,7 +252,7 @@ export const register: Register = on => {
         if (root && abs.startsWith(root + '/')) await record($, root, [abs.slice(root.length + 1)])
         seen.set(abs, await $.clock.now())
       }
-      return withContext(r, line)
+      return withContext(abs, r, line)
     }).catch(($, e, next) => next(e))
   }
 
@@ -257,7 +261,7 @@ export const register: Register = on => {
     const line = await peerLine($, abs, false)
     const r: any = await next(e)
     if (r && r.deny === undefined && !r.isError) seen.set(abs, await $.clock.now())
-    return withContext(r, line)
+    return withContext(abs, r, line)
   }).catch(($, e, next) => next(e))
 
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
@@ -273,19 +277,21 @@ export const register: Register = on => {
       if (r) cmdRoots.add(r)
     }
 
-    // Guard: whole-tree staging would commit peers' half-typed files.
+    const before = new Map<string, Map<string, number>>()
+    for (const root of cmdRoots) before.set(root, await dirty($, root))
+
+    // Guard: whole-tree staging would commit a peer's half-typed files.
     if (BULK_GIT.test(cmd)) {
-      for (const root of cmdRoots) {
-        if ((await peersOf($, root)).length > 0) {
+      for (const [root, was] of before) {
+        const theirs: string[] = []
+        for (const p of await peersOf($, root)) for (const f of Object.keys(p.files)) if (was.has(f)) theirs.push(`${f} (${nameOf(p)})`)
+        if (theirs.length) {
           return {
-            deny: `peers: other sessions have uncommitted work in ${root}. Use \`mine commit -m "..."\` (your files only), or \`git add -- <your files>\`.`,
+            deny: `peers: uncommitted peer files in ${root}: ${theirs.join(', ')}. Use \`mine commit -m "..."\` (your files only) or \`git add -- <your files>\`.`,
           }
         }
       }
     }
-
-    const before = new Map<string, Map<string, number>>()
-    for (const root of cmdRoots) before.set(root, await dirty($, root))
 
     const r: any = await next(e)
     if (!r || r.deny !== undefined || r.isReadOnly) return r
