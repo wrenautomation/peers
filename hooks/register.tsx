@@ -154,15 +154,18 @@ const withContext = (r: any, line: string | null) =>
   line && r && r.deny === undefined && !r.isError ? { ...r, context: [...(r.context ?? []), line] } : r
 
 const refreshPeers = async ($: any) => {
-  const root = cwdRoot ?? (roots.size ? [...roots][0] : null)
-  if (!root) return
-  const mine = await loadMine($, root)
+  const all = new Set<string>(roots)
+  if (cwdRoot) all.add(cwdRoot)
   const list: Peer[] = []
-  for (const p of await peersOf($, root)) {
-    const files = Object.keys(p.files)
-    const shared = files.filter(f => mine.files[f]).length
-    const last = files.reduce((m, f) => Math.max(m, p.files[f].last), p.updated)
-    list.push({ session: p.session, name: nameOf(p), ticket: p.ticket, files: files.length, shared, last })
+  for (const root of all) {
+    const mine = await loadMine($, root)
+    const tag = all.size > 1 ? `${root.slice(root.lastIndexOf('/') + 1)}:` : ''
+    for (const p of await peersOf($, root)) {
+      const files = Object.keys(p.files)
+      const shared = files.filter(f => mine.files[f]).length
+      const last = files.reduce((m, f) => Math.max(m, p.files[f].last), p.updated)
+      list.push({ session: p.session, name: tag + nameOf(p), ticket: p.ticket, files: files.length, shared, last })
+    }
   }
   list.sort((a, b) => b.last - a.last)
   const cur = await read($, peersAtom)
@@ -265,8 +268,8 @@ export const register: Register = on => {
     let n = 0
     for (const m of cmd.matchAll(ABS_PATH)) {
       if (n++ >= 3) break
-      const p = m[1]
-      const r = await rootOf($, p.endsWith('/') ? p.slice(0, -1) : dirOf(p))
+      const p = m[1].replace(/\/$/, '')
+      const r = (await rootOf($, p)) ?? (await rootOf($, dirOf(p)))
       if (r) cmdRoots.add(r)
     }
 
