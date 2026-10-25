@@ -24,7 +24,8 @@ type Ledger = {
 
 const LIVE_MS = 12 * 60 * 60 * 1000
 const EDIT_TOOLS = ['Edit', 'Write', 'NotebookEdit', 'MultiEdit'] as const
-const BULK_GIT = /\bgit\b[^|;&]*\b(add\s+(-A|--all|\.|:\/)|commit\s+(-a\b|--all\b|-am\b))/
+// Only at a command position: git in prose (a heredoc, a commit message) does not count.
+const BULK_GIT = /(?:^|[;&|(]\s*|&&\s*|\|\|\s*)git\s+(?:-C\s+\S+\s+)?[^|;&]*?\b(add\s+(-A|--all|\.|:\/)|commit\s+(-a\b|--all\b|-am\b))/m
 const ABS_PATH = /(?:^|[\s='"])(\/[^\s'"`;|&>]+)/g
 
 const peersAtom = atom({ plugin: 'peers', key: 'peers' } as const, [] as Peer[])
