@@ -237,7 +237,7 @@ export const register: Register = on => {
           scope: 'session' as const,
           text:
             'Peers: other Claude sessions edit this same checkout. Changes in files you did not touch are theirs: never mention, revert, stage or commit them. ' +
-            'Your files: `mine status`, `mine diff`, `mine commit -m "..."`, `mine check`. Bind a ticket once with `mine claim <id>`; `mine close` closes it. Do not update tickets by hand.',
+            'Your files: `mine status`, `mine diff`, `mine commit -m "..."`, `mine check`. Next task: `mine ready`. Bind one with `mine claim <id>`; `mine close -r "..."` closes it. Do not edit task status by hand.',
         },
       ],
     }
@@ -306,8 +306,8 @@ export const register: Register = on => {
       }
       if (touched.length) await record($, root, touched)
     }
-    // `mine claim` and `bd update --claim` bind the ticket in the ledger; refresh the band.
-    if (/\b(mine (claim|close)|bd (update|close))\b/.test(cmd)) await refreshPeers($)
+    // `mine claim` and `mine close` change the ticket in the ledger; refresh the band.
+    if (/\bmine (claim|close)\b/.test(cmd)) await refreshPeers($)
     return r
   }).catch(($, e, next) => next(e))
 

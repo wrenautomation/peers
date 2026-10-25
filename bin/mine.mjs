@@ -8,8 +8,9 @@ import { basename, join } from 'node:path'
 
 const argv = process.argv.slice(2)
 const cmd = argv[0]
-const usage = `mine status | diff | commit -m "msg" | check | ls | claim <ticket> | close [-r reason] | files
-Scope: the files this session edited (ledger kept by the peers mod). Env: PEERS_SESSION overrides the session id.`
+const usage = `mine status | diff | commit -m "msg" | check | ls | ready | claim <task> | close [-r reason] | files
+Scope: the files this session edited (ledger kept by the peers mod). Tasks: Backlog.md (\`backlog\` on PATH, board at BACKLOG_CWD).
+Env: PEERS_SESSION overrides the session id.`
 
 const session = process.env.PEERS_SESSION || process.env.CLAUDE_CODE_SESSION_ID
 if (!cmd || cmd === '-h' || cmd === '--help') die(usage, 0)
@@ -64,12 +65,13 @@ function mineDirty(l) {
   const d = dirtySet()
   return Object.keys(l.files).filter(f => d.has(f))
 }
-function hasBd() {
-  return spawnSync('bd', ['--version'], { stdio: 'ignore' }).status === 0
+// Task board: Backlog.md. Its auto_commit records each edit in the board's git.
+function hasBoard() {
+  return spawnSync('backlog', ['--version'], { stdio: 'ignore' }).status === 0
 }
-function bd(args) {
-  const r = spawnSync('bd', args, { encoding: 'utf8' })
-  if (r.status !== 0) process.stderr.write(`bd ${args.join(' ')}: ${(r.stderr || r.stdout || '').trim()}\n`)
+function board(args, quiet = true) {
+  const r = spawnSync('backlog', args, { encoding: 'utf8', stdio: quiet ? 'pipe' : 'inherit' })
+  if (r.status !== 0 && quiet) process.stderr.write(`backlog ${args.join(' ')}: ${(r.stderr || r.stdout || '').trim()}\n`)
   return r.status === 0
 }
 function withIndexRetry(fn) {
@@ -133,7 +135,7 @@ switch (cmd) {
     save(l)
     console.log(`${sha.slice(0, 7)} ${msg} (${mine.length} file${mine.length === 1 ? '' : 's'})`)
     if (shared.length) console.log(`note: also carries a peer's uncommitted lines in: ${shared.join(', ')}`)
-    if (l.ticket && hasBd()) bd(['update', l.ticket, '--append-notes', `${sha.slice(0, 7)} ${msg}`])
+    if (l.ticket && hasBoard()) board(['task', 'edit', l.ticket, '--append-notes', `${sha.slice(0, 7)} ${msg}`])
     break
   }
   case 'check': {
@@ -167,12 +169,16 @@ switch (cmd) {
     }
     break
   }
+  case 'ready': {
+    if (!hasBoard()) die('mine ready: backlog not on PATH (npm i -g backlog.md)')
+    process.exit(board(['task', 'list', '-s', 'To Do', '--plain'], false) ? 0 : 1)
+  }
   case 'claim': {
     const id = argv[1]
-    if (!id) die('mine claim <ticket>')
+    if (!id) die('mine claim <task>')
+    if (hasBoard() && !board(['task', 'edit', id, '-s', 'In Progress'])) die(`mine claim: no task ${id}`)
     l.ticket = id
     save(l)
-    if (hasBd()) bd(['update', id, '--claim'])
     console.log(`claimed ${id}`)
     break
   }
@@ -181,7 +187,7 @@ switch (cmd) {
     const i = argv.indexOf('-r')
     const last = l.commits.at(-1)
     const reason = (i > 0 ? argv[i + 1] : 'done') + (last ? ` (${last.sha.slice(0, 7)})` : '')
-    if (hasBd()) bd(['close', l.ticket, '-r', reason])
+    if (hasBoard() && board(['task', 'edit', l.ticket, '-s', 'Done', '--final-summary', reason])) board(['task', 'archive', l.ticket])
     console.log(`closed ${l.ticket}: ${reason}`)
     delete l.ticket
     save(l)

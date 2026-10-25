@@ -7,7 +7,7 @@ Each session gets a ledger of the files it edited. The ledger drives four things
 - **Scoped git.** `mine status`, `mine diff`, `mine commit -m "..."` see only this session's files. `mine check` runs the repo's gate on that commit in a side worktree.
 - **Peer awareness.** When a peer edited the exact file this session reads or edits, the tool result carries one line: who, when, committed or not. Nothing else reaches the model.
 - **A band above the prompt.** Live peers, their ticket, file counts, last edit. Zero tokens.
-- **Tickets.** `mine claim <id>` binds a ticket. Every `mine commit` appends the sha to it. `mine close` closes it. The agent never edits the ticket by hand. The store is [beads](https://github.com/steveyegge/beads) when `bd` is on PATH; without it, the ticket id still lands in the commit trailer.
+- **Tasks.** `mine ready` lists open work. `mine claim <id>` binds a task and sets it In Progress. Every `mine commit` appends the sha to its notes. `mine close` marks it Done and archives it. The agent never edits the task by hand. The board is [Backlog.md](https://github.com/MrLesk/Backlog.md): one Markdown file per task. Point `BACKLOG_CWD` at the board folder so every repo uses one board. Without `backlog` on PATH, the task id still lands in the commit trailer.
 
 A guard denies `git add -A`, `git add .` and `git commit -a` while a peer has uncommitted work. The system prompt gets one short rule: peers' changes in files you did not touch are theirs, never mention, revert or commit them.
 
@@ -32,12 +32,13 @@ Answer `y` to add the marketplace, then pick the user scope. The next session li
 ## Use
 
 ```
-mine claim wa-b5f          # bind a ticket (optional)
+mine ready                 # open tasks
+mine claim wa-b5f          # bind a task, set In Progress
 mine status                # your dirty files, peers hidden
 mine diff
 mine commit -m "add thing" # commits your files only, trailer Ticket: wa-b5f
 mine check                 # gate on that commit in ~/worktrees/<repo>-check
-mine close -r "shipped"
+mine close -r "shipped"   # Done + archived, summary carries the sha
 mine ls                    # every live session in this repo
 ```
 
