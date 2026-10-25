@@ -1,6 +1,6 @@
 {
   "name": "peers",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Parallel Claude Code sessions in one checkout: edit ledger, peer awareness, scoped commits, ticket binding.",
   "types": "./types/index.d.ts"
 }
