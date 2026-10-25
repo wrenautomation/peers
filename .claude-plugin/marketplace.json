@@ -1,0 +1,5 @@
+{
+  "name": "wrenautomation",
+  "owner": { "name": "Wren Automation" },
+  "plugins": [{ "name": "peers", "source": "./" }]
+}
