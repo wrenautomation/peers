@@ -9,7 +9,7 @@ import { applyHunks, keys, owner, parseDiff, statusPaths } from '../lib/lines.mj
 
 const argv = process.argv.slice(2)
 const cmd = argv[0]
-const usage = `peers status | diff | commit -m "msg" [--whole] | check | ls | ready | claim <task> | close [-r reason] | files | view
+const usage = `peers status | diff | commit -m "msg" [--whole] | check | ls | ready | claim <task> | close [-r reason] [--force] | files | view
 Scope: the files this session edited (ledger kept by the peers mod). In a file a peer also edits, only your hunks
 (--whole takes the file as it is). Tasks: Backlog.md (\`backlog\` on PATH, board at BACKLOG_CWD).
 view: a live page (127.0.0.1:6421) of every session's uncommitted edits, each in its author's color; /peers-view shows it in a pane.
@@ -291,6 +291,13 @@ switch (cmd) {
     const i = argv.indexOf('-r')
     const last = l.commits.at(-1)
     const reason = (i > 0 ? argv[i + 1] : 'done') + (last ? ` (${last.sha.slice(0, 7)})` : '')
+    // Big tasks carry acceptance criteria and a DoD per phase: every item is ticked before close.
+    if (hasBoard() && !argv.includes('--force')) {
+      const view = spawnSync('backlog', ['task', 'view', l.ticket, '--plain'], { encoding: 'utf8' }).stdout ?? ''
+      const open = view.split('\n').filter(x => /^\s*- \[ \] #\d+/.test(x))
+      if (open.length)
+        die(`peers close: ${l.ticket} has ${open.length} unchecked item(s):\n${open.join('\n')}\nTick each: backlog task edit ${l.ticket} --check-ac <n> | --check-dod <n>. --force closes anyway.`)
+    }
     if (hasBoard() && board(['task', 'edit', l.ticket, '-s', 'Done', '--final-summary', reason])) board(['task', 'archive', l.ticket])
     console.log(`closed ${l.ticket}: ${reason}`)
     delete l.ticket
