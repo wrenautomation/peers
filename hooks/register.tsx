@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { Register, RenderChildren } from 'claude-code'
 import type { Peer, ViewBody, ViewFile, ViewFocus, ViewFold, ViewIndex, ViewLine, ViewRepo, ViewSession } from '../types'
 import { HINT, scan } from '../lib/guard.mjs'
-import { delta, merge, statusPaths, unclaimed } from '../lib/lines.mjs'
+import { delta, merge, statusPaths, unclaimed, yields } from '../lib/lines.mjs'
 
 // One checkout, many sessions. Every session keeps its own ledger file:
 //   ~/.claude/peers/<encodeURIComponent(repo root)>/<session id>.json
@@ -13,7 +13,8 @@ import { delta, merge, statusPaths, unclaimed } from '../lib/lines.mjs'
 // added/removed: the distinctive lines this session's edits put in or took out (lib/lines.mjs).
 // edits: each titled edit, newest last; k holds a few of its line keys, so a hunk finds its title.
 type Edit = { at: number; t: string; k: string[] }
-type Entry = { first: number; last: number; added?: string[]; removed?: string[]; edits?: Edit[] }
+// from/last: when the latest action that recorded it began and ended (lib/lines.mjs yields).
+type Entry = { first: number; from?: number; last: number; added?: string[]; removed?: string[]; edits?: Edit[] }
 type Delta = { added: string[]; removed: string[] }
 type Commit = { sha: string; at: number; files: string[] }
 type Ledger = {
@@ -31,6 +32,8 @@ type Ledger = {
 const LIVE_MS = 12 * 60 * 60 * 1000
 const EDIT_TOOLS = ['Edit', 'Write', 'NotebookEdit'] as const
 const SNAPSHOT_MAX = 512 * 1024
+// mtime and clock skew a Bash window allows.
+const SLACK_MS = 2000
 const EDITS_MAX = 20
 const ABS_PATH = /(?:^|[\s='"])(\/[^\s'"`;|&>]+)/g
 
@@ -117,12 +120,13 @@ const saveMine = async ($: any, l: Ledger) => {
   await $.fs.write(ownPath(l.root), JSON.stringify(l))
 }
 
-const record = async ($: any, root: string, rels: string[], deltas = new Map<string, Delta>(), title = '') => {
+const record = async ($: any, root: string, rels: string[], deltas = new Map<string, Delta>(), title = '', from?: number) => {
   if (rels.length === 0) return
   const l = await loadMine($, root)
   const now = await $.clock.now()
   for (const rel of rels) {
     const e = (l.files[rel] ??= { first: now, last: now })
+    e.from = from ?? now
     e.last = now
     const d = deltas.get(rel)
     if (d) {
@@ -758,7 +762,7 @@ export const register: Register = on => {
         const hits = list.filter(({ rel }) => !rels || rels.some(t => t !== null && (t === '' || rel === t || rel.startsWith(t + '/'))))
         if (hits.length) {
           const files = [...new Set(hits.map(x => `${x.rel} (${nameOf(x.peer)})`))]
-          return { deny: `peers: this command reaches uncommitted peer files in ${root}: ${files.join(', ')}. ${HINT[hit.rule as keyof typeof HINT]}` }
+          return { deny: `peers: this command reaches uncommitted peer files in ${root}: ${files.join(', ')}. ${HINT[hit.rule as keyof typeof HINT]} See whose hunks are whose: peers diff --who <file>.` }
         }
       }
     }
@@ -771,9 +775,16 @@ export const register: Register = on => {
     for (const [root, was] of before) {
       const now = await dirty($, root)
       let touched: string[] = []
+      const t1 = await $.clock.now()
+      const peersNow = await peersOf($, root)
       for (const [rel, mtime] of now) {
         const old = was.get(rel)
-        if (old === undefined || old !== mtime) touched.push(rel)
+        if (old !== undefined && old === mtime) continue
+        // Newly dirty but not written while we ran: HEAD or the index moved (reset, amend, restore --staged).
+        if (old === undefined && mtime > 0 && mtime < t0 - SLACK_MS) continue
+        // A peer's tighter action spans the change: theirs, even inside our window.
+        if (mtime > 0 && yields(rel, mtime, { from: t0, to: t1 }, peersNow)) continue
+        touched.push(rel)
       }
       // A file that left the dirty list was committed or reverted, not edited. A deleted
       // tracked file stays dirty (mtime 0), so the loop above has it.
@@ -788,7 +799,7 @@ export const register: Register = on => {
       }
       // A long command (tests, a push) runs while peers edit: a file a peer recorded since it
       // started keeps only the lines that are not the peer's, and is not ours if none are left.
-      const during = (await peersOf($, root)).filter(p => p.updated >= t0)
+      const during = peersNow.filter(p => p.updated >= t0)
       touched = touched.filter(rel => {
         if (!during.length) return true
         const kept = unclaimed(deltas.get(rel), during, rel, t0)
@@ -796,7 +807,7 @@ export const register: Register = on => {
         return kept !== null
       })
       if (!touched.length) continue
-      await record($, root, touched, deltas, titleOf(e.description ?? '') || titleOf(said.get(e.tool_use_id ?? '') ?? ''))
+      await record($, root, touched, deltas, titleOf(e.description ?? '') || titleOf(said.get(e.tool_use_id ?? '') ?? ''), t0)
       const theirs = new Set(touched)
       for (const { rel, peer } of peerDirty.get(root) ?? []) if (theirs.has(rel)) hitPeers.push(`${rel} (${nameOf(peer)})`)
     }

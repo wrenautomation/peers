@@ -9,7 +9,7 @@ import { applyHunks, keys, owner, parseDiff, statusPaths } from '../lib/lines.mj
 
 const argv = process.argv.slice(2)
 const cmd = argv[0]
-const usage = `peers status | diff | commit -m "msg" [--whole] | check | ls | ready | claim <task> | close [-r reason] [--force] | files | view
+const usage = `peers status | diff [--who [file...]] | commit -m "msg" [--whole] | check | ls | ready | claim <task> | close [-r reason] [--force] | files | view
 Scope: the files this session edited (ledger kept by the peers mod). In a file a peer also edits, only your hunks
 (--whole takes the file as it is). Tasks: Backlog.md (\`backlog\` on PATH, board at BACKLOG_CWD).
 view: a live page (127.0.0.1:6421) of every session's uncommitted edits, each in its author's color; /peers-view shows it in a pane.
@@ -110,12 +110,14 @@ function lineSets(f, live) {
 function split(f, live) {
   const { mine, theirs } = lineSets(f, live)
   if (!theirs.who.length) return { whole: true }
-  if (theirs.blind) return { whole: true, who: theirs.who, blind: true }
+  // No line of ours at all: the file is the peers' (a command only brushed it), unless --whole.
+  const none = !mine.added.size && !mine.removed.size
   const d = parseDiff(git(['diff', '-U0', '--no-color', '--no-ext-diff', '--no-renames', 'HEAD', '--', f]))
   const cut = !d.binary && d.hunks.length && !d.hunks.some(h => h.noEol) && d.head.every(x => !/^(new|deleted) file/.test(x))
-  if (!cut) return { whole: true, who: theirs.who, uncut: true }
+  if (!cut) return { whole: true, who: theirs.who, uncut: true, none }
+  // A peer with no line data: hunks holding our lines are ours, the rest theirs.
   const by = { mine: [], theirs: [], mixed: [] }
-  for (const h of d.hunks) by[owner(h, mine, theirs)].push(h)
+  for (const h of d.hunks) by[owner(h, mine, theirs, theirs.blind)].push(h)
   return { whole: false, who: theirs.who, head: d.head, ...by }
 }
 function withIndexRetry(fn) {
@@ -157,12 +159,28 @@ switch (cmd) {
     const live = peers()
     for (const f of shared) {
       const s = split(f, live)
-      if (s.who) note.push(s.whole ? `${f} shared with ${s.who.join(', ')} (whole file)` : `${f}: ${s.mine.length} hunk(s) yours, ${s.theirs.length} ${s.who.join(', ')}'s${s.mixed.length ? `, ${s.mixed.length} mixed` : ''}`)
+      if (s.who) note.push(s.whole ? `${f} shared with ${s.who.join(', ')} (whole file${s.none ? ', no lines of yours: commit skips it' : ''})` : `${f}: ${s.mine.length} hunk(s) yours, ${s.theirs.length} ${s.who.join(', ')}'s${s.mixed.length ? `, ${s.mixed.length} mixed` : ''}`)
     }
     if (note.length) console.log(`(${note.join('; ')})`)
     break
   }
   case 'diff': {
+    if (argv.includes('--who')) {
+      // Every hunk of the named files (default: all of yours), headed by whose it is.
+      const named = argv.slice(1).filter(a => a !== '--who')
+      const live = peers()
+      for (const f of named.length ? named : mineDirty(l)) {
+        const s = split(f, live)
+        if (s.whole) {
+          console.log(`# ${f}: whole file, ${s.who ? `yours and ${s.who.join(', ')}'s${s.none ? ' (no lines of yours)' : ''}` : 'yours'}`)
+          continue
+        }
+        const tagged = [...s.mine.map(h => [h, 'yours']), ...s.theirs.map(h => [h, `${s.who.join(', ')}'s`]), ...s.mixed.map(h => [h, 'mixed'])]
+        console.log(`# ${f}`)
+        for (const [h, who] of tagged.sort((x, y) => x[0].a - y[0].a)) console.log([`## ${who}`, ...h.text].join('\n'))
+      }
+      break
+    }
     const mine = mineDirty(l)
     if (!mine.length) break
     const live = peers()
@@ -179,7 +197,12 @@ switch (cmd) {
   case 'commit': {
     const i = argv.indexOf('-m')
     const msg = i > 0 ? argv[i + 1] : null
-    if (!msg) die('peers commit -m "message" [--whole]')
+    if (!msg?.trim()) die('peers commit -m "message" [--whole]: the message is empty')
+    // A message file a blocked command never rewrote still holds the last one: never reuse it.
+    const subject = msg.split('\n')[0].trim()
+    const last = l.commits.at(-1)?.sha
+    const used = [git(['log', '-1', '--format=%s', 'HEAD']).trim(), last ? spawnSync('git', ['log', '-1', '--format=%s', last], { encoding: 'utf8' }).stdout?.trim() : '']
+    if (used.includes(subject)) die(`peers commit: "${subject}" is the subject of the last commit. Write a new message.`)
     const mine = mineDirty(l)
     if (!mine.length) die('nothing of yours to commit (edited in this same command? the ledger lands after it ends: run peers commit on its own)')
     const body = [msg, '', ...(l.ticket ? [`Ticket: ${l.ticket}`] : []), 'Co-Authored-By: Claude <noreply@anthropic.com>'].join('\n')
@@ -199,6 +222,10 @@ switch (cmd) {
       const files = []
       for (const f of mine) {
         const s = argv.includes('--whole') ? { whole: true } : split(f, live)
+        if (s.whole && s.none && s.who) {
+          notes.push(`${f}: skipped, no lines of yours (${s.who.join(', ')} edited it); --whole takes it`)
+          continue
+        }
         if (s.whole) {
           whole.push(f)
           files.push(f)
@@ -234,9 +261,11 @@ switch (cmd) {
     for (const f of mine) {
       const e = l.files[f]
       if (!e?.added && !e?.removed) continue
-      const d = parseDiff(git(['diff', '-U0', '--no-color', '--no-ext-diff', 'HEAD', '--', f]))
-      const plus = keys(d.hunks.flatMap(h => h.plus).join('\n'))
-      const minus = keys(d.hunks.flatMap(h => h.minus).join('\n'))
+      // An untracked file has no diff against HEAD: all its lines are still uncommitted.
+      const untracked = git(['ls-files', '--others', '--exclude-standard', '--', f]).trim()
+      const d = untracked ? null : parseDiff(git(['diff', '-U0', '--no-color', '--no-ext-diff', 'HEAD', '--', f]))
+      const plus = d ? keys(d.hunks.flatMap(h => h.plus).join('\n')) : existsSync(f) ? keys(readFileSync(f, 'utf8')) : new Set()
+      const minus = d ? keys(d.hunks.flatMap(h => h.minus).join('\n')) : new Set()
       e.added = (e.added ?? []).filter(k => plus.has(k))
       e.removed = (e.removed ?? []).filter(k => minus.has(k))
     }
@@ -258,8 +287,11 @@ switch (cmd) {
     } else {
       git(['-C', wt, 'checkout', '-q', '--detach', last.sha])
     }
-    if (existsSync(join(wt, 'pnpm-lock.yaml')) && !existsSync(join(wt, 'node_modules'))) {
-      spawnSync('pnpm', ['install', '--frozen-lockfile', '--prefer-offline'], { cwd: wt, stdio: 'inherit' })
+    console.log(`peers check: ${wt} at ${git(['-C', wt, 'log', '-1', '--format=%h %s']).trim()}`)
+    // Every run: a commit that moves the lockfile or a package.json needs fresh node_modules; a no-op otherwise.
+    if (existsSync(join(wt, 'pnpm-lock.yaml'))) {
+      const i = spawnSync('pnpm', ['install', '--frozen-lockfile', '--prefer-offline'], { cwd: wt, stdio: 'inherit' })
+      if (i.status !== 0) die(`peers check: pnpm install failed in ${wt}`)
     }
     const gate = join(wt, 'scripts', 'gates.sh')
     const r = existsSync(gate)
