@@ -1,6 +1,6 @@
 import { atom, read, update } from 'claude-code'
 import type { Register, RenderChildren } from 'claude-code'
-import type { Peer, ViewBody, ViewFocus, ViewIndex, ViewLine } from '../types'
+import type { Peer, ViewBody, ViewFile, ViewFocus, ViewFold, ViewIndex, ViewLine, ViewRepo, ViewSession } from '../types'
 import { HINT, scan } from '../lib/guard.mjs'
 import { delta, merge, statusPaths, unclaimed } from '../lib/lines.mjs'
 
@@ -11,7 +11,9 @@ import { delta, merge, statusPaths, unclaimed } from '../lib/lines.mjs'
 // token unless a peer touched the exact file the model is about to use.
 
 // added/removed: the distinctive lines this session's edits put in or took out (lib/lines.mjs).
-type Entry = { first: number; last: number; added?: string[]; removed?: string[] }
+// edits: each titled edit, newest last; k holds a few of its line keys, so a hunk finds its title.
+type Edit = { at: number; t: string; k: string[] }
+type Entry = { first: number; last: number; added?: string[]; removed?: string[]; edits?: Edit[] }
 type Delta = { added: string[]; removed: string[] }
 type Commit = { sha: string; at: number; files: string[] }
 type Ledger = {
@@ -29,6 +31,7 @@ type Ledger = {
 const LIVE_MS = 12 * 60 * 60 * 1000
 const EDIT_TOOLS = ['Edit', 'Write', 'NotebookEdit'] as const
 const SNAPSHOT_MAX = 512 * 1024
+const EDITS_MAX = 20
 const ABS_PATH = /(?:^|[\s='"])(\/[^\s'"`;|&>]+)/g
 
 const peersAtom = atom({ plugin: 'peers', key: 'peers' } as const, [] as Peer[])
@@ -51,6 +54,15 @@ const roots = new Set<string>()
 const seen = new Map<string, number>() // abs path -> when this session last read it
 const told = new Map<string, number>() // abs path -> peer `last` we already reported
 const text = new Map<string, { mtime: number; body: string }>() // abs path -> content at mtime, for Bash deltas
+const said = new Map<string, string>() // tool_use_id -> the line the model wrote before that call
+
+// An edit's title: the first sentence of what the model said before it, as plain text.
+const titleOf = (raw: string) => {
+  const line = raw.split('\n').map(x => x.trim()).filter(Boolean).pop() ?? ''
+  const plain = line.replace(/[*_`#>]/g, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').trim()
+  const first = /^(.+?[.!?])(\s|$)/.exec(plain)?.[1] ?? plain
+  return first.replace(/[:.]\s*$/, '').slice(0, 120).trim()
+}
 
 const ledgerDir = (root: string) => `${home}/.claude/peers/${encodeURIComponent(root)}`
 const ownPath = (root: string) => `${ledgerDir(root)}/${session}.json`
@@ -103,7 +115,7 @@ const saveMine = async ($: any, l: Ledger) => {
   await $.fs.write(ownPath(l.root), JSON.stringify(l))
 }
 
-const record = async ($: any, root: string, rels: string[], deltas = new Map<string, Delta>()) => {
+const record = async ($: any, root: string, rels: string[], deltas = new Map<string, Delta>(), title = '') => {
   if (rels.length === 0) return
   const l = await loadMine($, root)
   const now = await $.clock.now()
@@ -114,6 +126,8 @@ const record = async ($: any, root: string, rels: string[], deltas = new Map<str
     if (d) {
       e.added = merge(e.added, d.added)
       e.removed = merge(e.removed, d.removed)
+      const k = [...d.added, ...d.removed].slice(0, 4)
+      if (title && k.length) e.edits = [...(e.edits ?? []), { at: now, t: title, k }].slice(-EDITS_MAX)
     }
   }
   await saveMine($, l)
@@ -193,7 +207,9 @@ const peerLine = async ($: any, abs: string, forEdit: boolean): Promise<string |
     newest = Math.max(newest, e.last)
     const commit = p.commits.find(c => c.at >= e.last && c.files.includes(rel))
     const state = commit ? `committed ${commit.sha.slice(0, 7)}` : 'uncommitted'
-    lines.push(`${nameOf(p)} edited it ${ago(now - e.last)} ago (${state})`)
+    // What they said the edits do: the titles peers records with each edit.
+    const said = [...new Set((e.edits ?? []).filter(x => x.at > since && x.t).map(x => x.t))].slice(-3)
+    lines.push(`${nameOf(p)} edited it ${ago(now - e.last)} ago (${state})${said.length ? `: ${said.map(t => `"${t}"`).join(', ')}` : ''}`)
   }
   if (lines.length === 0) return null
   const tail = forEdit ? ' Re-read before you edit. Keep their lines.' : ' Their lines are not yours: leave them.'
@@ -261,7 +277,8 @@ const COLORS = ['#4a86e8', '#e8590c', '#37b24d', '#be4bdb', '#e64980', '#15aabf'
 const NOBODY = '#8e8e93'
 const MAX_LINES = 600
 
-const indexAtom = atom({ plugin: 'peers', key: 'index' } as const, { sig: '', repos: [] } as ViewIndex, { shape: 'index-1' })
+const indexAtom = atom({ plugin: 'peers', key: 'index' } as const, { sig: '', repos: [] } as ViewIndex, { shape: 'index-2' })
+const foldAtom = atom({ plugin: 'peers', key: 'fold' } as const, { zoom: 2, flip: [] } as ViewFold, { shape: 'fold-1' })
 const focusAtom = atom({ plugin: 'peers', key: 'focus' } as const, null as ViewFocus, { shape: 'focus-1' })
 const bodyAtom = atom({ plugin: 'peers', key: 'body' } as const, null as ViewBody, { shape: 'body-1' })
 let tick: { cancel: () => void } | null = null
@@ -316,7 +333,8 @@ const poll = async ($: any) => {
 const openPane = async ($: any) => {
   if (!tick) tick = $.clock.every(2000, () => void poll($).catch(() => {}))
   await poll($)
-  await $.ui.open({ id: PANE, title: 'Peers' })
+  // A view the person calls up and dismisses, as the agents view: it takes the keys, Escape closes it.
+  await $.ui.open({ id: PANE, title: 'Peers', focus: true, closeOnEscape: true })
 }
 
 export const register: Register = on => {
@@ -342,13 +360,16 @@ export const register: Register = on => {
       await $.process.run(['ln', '-sfn', `${$.plugin.root}/bin/peers.mjs`, `${home}/.local/bin/peers`], { timeoutMs: 5000 })
     } catch {}
     $.clock.every(3000, () => refreshPeers($))
-    await $.command.register({ name: 'peers-view', description: "Show every live session's uncommitted edits in a pane" })
+    // immediate: it opens mid-turn, never queued behind the running turn.
+    await $.command.register({ name: 'peers-view', description: "Open or close the live view of every session's edits", immediate: true })
     return next(e)
   })
 
+  // A toggle with no transcript line: run again, it closes.
   on('command.run', { command: 'peers-view' }, async $ => {
-    await openPane($)
-    return { text: 'Peers pane opened.' }
+    if ((await $.ui.panes()).some(p => p.id === PANE)) await $.ui.close({ id: PANE })
+    else await openPane($)
+    return {}
   })
 
   on('ui.close', async ($, e, next) => {
@@ -364,52 +385,146 @@ export const register: Register = on => {
     const ix = await read($, indexAtom)
     const focus = await read($, focusAtom)
     const now = await $.clock.now()
-    const sessions = ix.repos.flatMap(r => r.sessions)
+    const fold = await read($, foldAtom)
+    // One color per session by start order, the same rule as the page: a session keeps its color in both.
+    const byId = new Map<string, ViewSession>()
+    const first = new Map<string, number>()
+    const named = new Map<string, ViewSession>()
+    for (const s of ix.repos.flatMap(r => r.sessions)) {
+      if ((byId.get(s.id)?.updated ?? -1) < s.updated) byId.set(s.id, s)
+      if (s.title) named.set(s.id, s)
+      first.set(s.id, Math.min(first.get(s.id) ?? Infinity, s.started ?? 0))
+    }
+    // A session claims its task in one repo: that name holds in every repo.
+    for (const [id, s] of named) byId.set(id, { ...byId.get(id)!, name: s.name, title: s.title })
+    const order = [...first.keys()].sort((a, b) => first.get(a)! - first.get(b)!)
     const col = (id?: string | null) => {
-      const i = sessions.findIndex(s => s.id === id)
+      const i = order.indexOf(id ?? '')
       return i < 0 ? NOBODY : COLORS[i % COLORS.length]
     }
-    const nameOf = (id: string) => sessions.find(s => s.id === id)?.name ?? 'nobody'
+    const nameOf = (id: string) => byId.get(id)?.name ?? 'nobody'
     const show = (f: ViewFocus) => async () => {
       await update($, focusAtom, () => f)
       await loadBody($)
     }
 
     if (!focus) {
-      let n = 0
+      // A group is open when the zoom reaches its depth, unless the person toggled it.
+      const isOpen = (id: string, depth: number) => fold.zoom >= depth !== fold.flip.includes(id)
+      const flip = (id: string) => async () =>
+        void (await update($, foldAtom, v => ({ ...v, flip: v.flip.includes(id) ? v.flip.filter(x => x !== id) : [...v.flip.slice(-200), id] })))
+      const zoom = (z: 1 | 2 | 3) => async () => void (await update($, foldAtom, () => ({ zoom: z, flip: [] })))
+      const num = (a: number, d: number) => `${a ? ` +${a}` : ''}${d ? ` −${d}` : ''}`
+      const people = [...byId.values()].sort((a, b) => b.updated - a.updated)
+      const feed = ix.repos
+        .flatMap(r => r.feed ?? [])
+        .sort((a, b) => b.at - a.at)
+        .slice(0, 6)
+      const repoRows = (r: ViewRepo) => {
+        // A file sits under each session that owns a change in it; changes of no live session go to Unattributed.
+        const ids = new Set(r.sessions.map(s => s.id))
+        const own = (a: string | null | undefined) => (a && ids.has(a) ? a : null)
+        const groups = new Map<string | null, ViewFile[]>(r.sessions.slice().sort((a, b) => b.updated - a.updated).map(s => [s.id, []]))
+        groups.set(null, [])
+        for (const f of r.files) {
+          const by = f.changes?.length ? f.changes.map(c => own(c.a)) : f.authors.length ? f.authors.map(own) : [null]
+          for (const a of new Set(by)) groups.get(a)!.push(f)
+        }
+        const out: RenderChildren[] = []
+        for (const [a, files] of groups) {
+          if (!files.length) continue
+          const id = `s:${r.root}:${a}`
+          const mine = (f: ViewFile) => (f.changes?.length ? f.changes.filter(c => own(c.a) === a) : [])
+          const adds = files.reduce((n, f) => n + (mine(f).length ? mine(f).reduce((m, c) => m + c.adds, 0) : f.adds), 0)
+          const dels = files.reduce((n, f) => n + (mine(f).length ? mine(f).reduce((m, c) => m + c.dels, 0) : f.dels), 0)
+          const open = isOpen(id, 2)
+          out.push(
+            <Button key={id} plain onPress={flip(id)}>
+              <Text dimColor>{open ? '▾ ' : '▸ '}</Text>
+              <Text color={col(a)}>● </Text>
+              <Text bold>{a ? nameOf(a) : 'Unattributed'}</Text>
+              <Text dimColor>{` ${files.length} file${files.length === 1 ? '' : 's'}${num(adds, dels)}`}</Text>
+            </Button>,
+          )
+          if (!open) continue
+          for (const f of files) {
+            const cs = mine(f)
+            const said = [...new Set(cs.filter(c => c.said).map(c => c.t))]
+            out.push(
+              <Button key={`f:${a}:${r.root}/${f.rel}`} plain onPress={show({ root: r.root, rel: f.rel, mode: isDoc(f.rel) ? 'doc' : 'diff' })}>
+                {'   '}
+                {(f.authors.length ? f.authors : [null]).map(x => (
+                  <Text color={col(x)}>●</Text>
+                ))}
+                {` ${f.rel}`}
+                <Text dimColor>{`${f.isNew ? ' new' : ''}${num(cs.length ? cs.reduce((n, c) => n + c.adds, 0) : f.adds, cs.length ? cs.reduce((n, c) => n + c.dels, 0) : f.dels)} · ${ago(now - f.mtime)}`}</Text>
+                {fold.zoom < 3 && said.length ? <Text dimColor>{`  ${said.join(' · ')}`}</Text> : null}
+              </Button>,
+            )
+            if (fold.zoom >= 3)
+              for (const c of cs)
+                out.push(
+                  <Text>
+                    {'      '}
+                    <Text color={col(c.a)}>▸ </Text>
+                    <Text dimColor={!c.said}>{c.t || 'change'}</Text>
+                    <Text dimColor>{`${num(c.adds, c.dels)} · L${c.line}`}</Text>
+                  </Text>,
+                )
+          }
+        }
+        return out
+      }
       return (
         <Box flexDirection="column">
+          <Box gap={2}>
+            {([1, 2, 3] as const).map(z => (
+              <Button key={`zoom${z}`} plain hotkey={String(z)} dimColor={fold.zoom !== z} onPress={zoom(z)}>
+                {['sessions', 'files', 'changes'][z - 1]!}
+              </Button>
+            ))}
+            <Text dimColor>esc closes</Text>
+          </Box>
+          <Text> </Text>
           {ix.error && <Text color="warning">{ix.error}</Text>}
-          {!ix.error && ix.repos.length === 0 && <Text dimColor>No uncommitted changes in the live sessions.</Text>}
-          {ix.repos.map(r => (
-            <Box flexDirection="column" marginBottom={1}>
-              <Text bold>{r.name}</Text>
-              {r.sessions.map(s => (
-                <Text>
-                  <Text color={col(s.id)}>● </Text>
-                  {s.name}
-                  {s.title ? <Text dimColor> {s.title}</Text> : null}
-                </Text>
-              ))}
-              {r.files.map(f => {
-                n++
-                return (
-                  <Button
-                    key={`f:${r.root}/${f.rel}`}
-                    plain
-                    hotkey={n <= 9 ? String(n) : undefined}
-                    onPress={show({ root: r.root, rel: f.rel, mode: isDoc(f.rel) ? 'doc' : 'diff' })}
-                  >
-                    {(f.authors.length ? f.authors : [null]).map(a => (
-                      <Text color={col(a)}>●</Text>
-                    ))}
-                    {` ${f.rel}`}
-                    <Text dimColor>{` ${f.isNew ? 'new ' : ''}+${f.adds} -${f.dels} · ${ago(now - f.mtime)}`}</Text>
-                  </Button>
-                )
-              })}
+          {!ix.error && people.length === 0 && <Text dimColor>No live sessions.</Text>}
+          {people.map(s => (
+            <Box flexDirection="column">
+              <Text>
+                <Text color={col(s.id)}>{now - s.updated < 20000 ? '◉ ' : '● '}</Text>
+                <Text bold>{s.name}</Text>
+                {s.title ? <Text dimColor>{` ${s.title}`}</Text> : null}
+                <Text dimColor>{` · ${ago(now - s.updated)}`}</Text>
+              </Text>
+              {s.doing ? <Text dimColor>{`  ${s.doing}`}</Text> : null}
             </Box>
           ))}
+          {fold.zoom >= 2 &&
+            ix.repos.map(r => {
+              const rows = repoRows(r)
+              return rows.length ? (
+                <Box flexDirection="column" marginTop={1}>
+                  <Text bold>{r.name}</Text>
+                  {rows}
+                </Box>
+              ) : null
+            })}
+          {feed.length > 0 && (
+            <Box flexDirection="column" marginTop={1}>
+              <Text bold>Activity</Text>
+              {feed.map(e => (
+                <Text>
+                  <Text color={col(e.a)}>● </Text>
+                  <Text dimColor>{`${ago(now - e.at)} `}</Text>
+                  {e.kind === 'commit' ? `commit ${e.sha ?? ''} ${e.t}` : e.t || 'Edited'}
+                  <Text dimColor>{`  ${e.rels
+                    .slice(0, 3)
+                    .map(x => x.slice(x.lastIndexOf('/') + 1))
+                    .join(', ')}${e.rels.length > 3 ? ` +${e.rels.length - 3}` : ''}`}</Text>
+                </Text>
+              ))}
+            </Box>
+          )}
         </Box>
       )
     }
@@ -447,7 +562,9 @@ export const register: Register = on => {
       for (const x of body.lines ?? []) rows.push(line(x))
     } else {
       for (const hunk of body.hunks ?? []) {
-        rows.push(<Text dimColor>{`@@ ${hunk.at || `line ${hunk.new}`}`}</Text>)
+        rows.push(
+          <Text color={col(hunk.a)} bold={hunk.said}>{`@@ ${hunk.t || hunk.at || `line ${hunk.new}`}`}</Text>,
+        )
         for (const x of hunk.lines)
           rows.push(
             x.t === ' ' ? (
@@ -501,7 +618,8 @@ export const register: Register = on => {
           scope: 'session' as const,
           text:
             'Peers: other Claude sessions edit this same checkout. Changes in files you did not touch are theirs: never mention, revert, stage or commit them. ' +
-            'Your files: `peers status`, `peers diff`, `peers commit -m "..."`, `peers check`. Next task: `peers ready`. Bind one with `peers claim <id>`; `peers close -r "..."` closes it. Do not edit task status by hand.',
+            'Your files: `peers status`, `peers diff`, `peers commit -m "..."`, `peers check`. Next task: `peers ready`. Bind one with `peers claim <id>`; `peers close -r "..."` closes it. Do not edit task status by hand. ' +
+            'Before a group of edits, say in one line what they do, like a commit subject: peers shows it as their title.',
         },
       ],
     }
@@ -535,7 +653,9 @@ export const register: Register = on => {
       const line = abs ? await peerLine($, abs, true) : null
       const r: any = await next(e)
       if (rel && root && r && r.deny === undefined && !r.isError) {
-        await record($, root, [rel], d ? new Map([[rel, d]]) : undefined)
+        const t = titleOf(said.get(e.tool_use_id ?? '') ?? '')
+        said.delete(e.tool_use_id ?? '')
+        await record($, root, [rel], d ? new Map([[rel, d]]) : undefined, t)
         seen.set(abs, await $.clock.now())
       }
       const warn = lost.length
@@ -637,17 +757,37 @@ export const register: Register = on => {
         return kept !== null
       })
       if (!touched.length) continue
-      await record($, root, touched, deltas)
+      await record($, root, touched, deltas, titleOf(e.description ?? '') || titleOf(said.get(e.tool_use_id ?? '') ?? ''))
       const theirs = new Set(touched)
       for (const { rel, peer } of peerDirty.get(root) ?? []) if (theirs.has(rel)) hitPeers.push(`${rel} (${nameOf(peer)})`)
     }
     // `peers claim` and `peers close` change the ticket in the ledger; refresh the band.
-    if (/\bmine (claim|close)\b/.test(cmd)) await refreshPeers($)
+    said.delete(e.tool_use_id ?? '')
+    if (/\b(mine|peers) (claim|close)\b/.test(cmd)) await refreshPeers($)
     const warn = hitPeers.length
       ? `peers: this command changed uncommitted peer files: ${[...new Set(hitPeers)].join(', ')}. Check them with git diff and put back any of their lines it broke.`
       : null
     return withContext('', r, warn)
   }).catch(($, e, next) => next(e))
+
+  // The text the model writes before a tool call titles that call's edits. Every chunk passes on unchanged.
+  on('turn.step', async function* ($, e, next) {
+    const it = next(e)
+    let text = ''
+    for (;;) {
+      const r = await it.next()
+      if (r.done) return r.value
+      const c: any = r.value
+      if (c.kind === 'text') text += c.text
+      else if (c.kind === 'tool' && text.trim()) {
+        said.set(c.id, text)
+        if (said.size > 200) said.delete(said.keys().next().value as string)
+      }
+      yield c
+    }
+  }).catch(async function* ($, e, next) {
+    return yield* next(e)
+  })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const peers = await read($, peersAtom)

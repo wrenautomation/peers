@@ -25,7 +25,13 @@ if (cmd === 'view') {
 }
 if (!session) die('peers: no session id. Run it from a Claude Code session, or set PEERS_SESSION.')
 
-const root = git(['rev-parse', '--show-toplevel']).trim()
+const root = (() => {
+  try {
+    return git(['rev-parse', '--show-toplevel']).trim()
+  } catch {
+    die(`peers: ${process.cwd()} is not in a git repo. cd into the repo you work in.`)
+  }
+})()
 // Ledger paths are relative to the root: run every git call from there.
 process.chdir(root)
 const dir = join(homedir(), '.claude', 'peers', encodeURIComponent(root))

@@ -4,143 +4,341 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Peers live</title>
+<link rel="stylesheet" href="/vendor/bootstrap-icons.css">
+<link rel="stylesheet" href="/vendor/wunderbaum.css">
+<link rel="stylesheet" href="/vendor/github-markdown.css">
+<link rel="stylesheet" href="/vendor/hljs-light.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="/vendor/hljs-dark.css" media="(prefers-color-scheme: dark)">
 <style>
 :root {
-  --bg: #fbfaf8; --panel: #ffffff; --ink: #1d1d1f; --mute: #6e6e73; --line: #e6e3de; --code: #f4f2ee;
+  --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1d1f; --mute: #6e6e73; --faint: #76767c; --line: #e4e1db; --code: #f2f0eb; --hover: #efede8;
   --a0: #2f6fdf; --a1: #d9480f; --a2: #2b8a3e; --a3: #ae3ec9; --a4: #c2255c; --a5: #1098ad; --a6: #e67700; --a7: #5f3dc4;
-  --nobody: #8e8e93; --tint: 14%;
+  --nobody: #8e8e93; --tint: 13%; --add: #2b8a3e; --del: #c92a2a;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #141416; --panel: #1c1c1f; --ink: #ececf0; --mute: #9a9aa2; --line: #2c2c31; --code: #232327;
+    --bg: #111113; --panel: #18181b; --ink: #ececf0; --mute: #9a9aa2; --faint: #8b8b94; --line: #2a2a2f; --code: #212125; --hover: #232328;
     --a0: #6ea2ff; --a1: #ff8a50; --a2: #5fd27a; --a3: #d68bf0; --a4: #ff6b9d; --a5: #4fd1e6; --a6: #ffb340; --a7: #a48bff;
-    --tint: 22%; color-scheme: dark;
+    --tint: 20%; --add: #5fd27a; --del: #ff6b6b;
+    color-scheme: dark;
   }
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Inter", sans-serif; }
-a { color: inherit; }
-.app { display: grid; grid-template-columns: 300px 1fr; min-height: 100vh; }
-aside { border-right: 1px solid var(--line); padding: 16px; position: sticky; top: 0; height: 100vh; overflow: auto; background: var(--panel); }
-main { padding: 20px 28px 80px; min-width: 0; }
-aside h1 { font-size: 15px; margin: 0 0 14px; display: flex; align-items: center; gap: 8px; }
-.pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--a2); }
-.pulse.off { background: var(--nobody); }
-.repo { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--mute); margin: 18px 0 6px; }
-.sess { display: flex; gap: 8px; align-items: flex-start; padding: 6px 8px; border-radius: 6px; cursor: pointer; }
-.sess:hover, .sess.on { background: var(--code); }
-.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c); flex: none; margin-top: 5px; }
-.dot.now { box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 30%, transparent); }
-.sname { font-weight: 600; }
-.sub { color: var(--mute); font-size: 12px; }
-.flist { margin: 4px 0 0; padding: 0; list-style: none; }
-.flist li { display: flex; gap: 6px; align-items: center; padding: 3px 8px; border-radius: 6px; cursor: pointer; font-size: 12.5px; overflow-wrap: anywhere; }
-.flist li:hover, .flist li.on { background: var(--code); }
-.dots { display: flex; gap: 3px; flex: none; }
-.dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--c); }
-.bar { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
-.bar button { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--ink); padding: 4px 10px; border-radius: 6px; cursor: pointer; }
-.bar button.on { border-color: var(--ink); }
-.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; margin-bottom: 16px; overflow: hidden; }
-.card > header { display: flex; gap: 10px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--line); cursor: pointer; }
-.card > header .path { font-weight: 600; overflow-wrap: anywhere; }
-.chip { font-size: 11.5px; padding: 1px 7px; border-radius: 10px; background: color-mix(in srgb, var(--c) var(--tint), transparent); color: var(--ink); border: 1px solid color-mix(in srgb, var(--c) 45%, transparent); }
-.diff { font: 12.5px/1.55 ui-monospace, "SF Mono", Menlo, monospace; overflow-x: auto; }
-.hunk-at { color: var(--mute); background: var(--code); padding: 2px 12px; }
-.ln { display: grid; grid-template-columns: 4px 22px 1fr; white-space: pre-wrap; overflow-wrap: anywhere; }
-.ln .g { background: var(--c, transparent); }
-.ln .s { color: var(--mute); text-align: center; user-select: none; }
-.ln.add { background: color-mix(in srgb, var(--c, var(--nobody)) var(--tint), transparent); }
-.ln.del { color: var(--mute); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--c, var(--nobody)) 70%, transparent); }
-.more { padding: 6px 12px; color: var(--mute); cursor: pointer; }
-.doc { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 32px 48px; max-width: 860px; }
-.doc pre { background: var(--code); padding: 10px 12px; border-radius: 6px; overflow-x: auto; }
-.doc code { background: var(--code); padding: 1px 4px; border-radius: 4px; font-size: 90%; }
-.doc table { border-collapse: collapse; } .doc td, .doc th { border: 1px solid var(--line); padding: 4px 8px; }
-.doc mark { background: color-mix(in srgb, var(--c) var(--tint), transparent); color: inherit; border-bottom: 2px solid var(--c); padding: 0 1px; }
-.doc del { color: var(--c); opacity: .75; }
-.doc div.ins { border-left: 3px solid var(--c); background: color-mix(in srgb, var(--c) calc(var(--tint) / 2), transparent); padding: 0 12px; margin: 0 -15px; }
-.doc div.dels { border-left: 3px solid var(--c); padding: 0 12px; margin: 0 -15px; text-decoration: line-through; color: var(--mute); }
+html, body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Inter", sans-serif; }
+button { font: inherit; color: inherit; }
+.mono { font-family: var(--mono); }
+.mute { color: var(--mute); }
+.faint { color: var(--faint); }
+
+/* Shell: top bar, then tree | main | feed. */
+.top { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 12px; padding: 8px 16px; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+.top h1 { font-size: 15px; margin: 0; display: flex; align-items: center; gap: 8px; }
+.live { width: 8px; height: 8px; border-radius: 50%; background: var(--nobody); }
+.live.on { background: var(--add); box-shadow: 0 0 0 3px color-mix(in srgb, var(--add) 25%, transparent); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; background: var(--panel); }
+.seg button { border: 0; background: none; padding: 3px 10px; cursor: pointer; color: var(--mute); }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button.on { color: var(--ink); background: var(--hover); font-weight: 600; }
+.seg kbd, .find kbd { font: 11px var(--mono); color: var(--faint); margin-right: 4px; }
+.find { margin-left: auto; display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: var(--panel); border-radius: 7px; padding: 3px 10px; cursor: pointer; color: var(--mute); min-width: 200px; }
+.app { display: grid; grid-template-columns: 300px minmax(0, 1fr) 300px; min-height: calc(100vh - 45px); }
+.rail { position: sticky; top: 45px; height: calc(100vh - 45px); overflow: auto; background: var(--panel); }
+.left { border-right: 1px solid var(--line); display: flex; flex-direction: column; overflow: hidden; }
+.right { border-left: 1px solid var(--line); padding: 12px 12px 40px; }
+main { padding: 16px 24px 80px; min-width: 0; }
+.label { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--mute); margin: 4px 0 6px; display: flex; align-items: center; gap: 8px; }
+
+/* Legend: one chip per session. */
+#legend { padding: 12px 12px 6px; border-bottom: 1px solid var(--line); max-height: 45%; overflow: auto; flex: none; }
+.who { display: grid; grid-template-columns: 12px 1fr auto; gap: 2px 8px; padding: 6px 8px; border-radius: 7px; cursor: pointer; border: 1px solid transparent; }
+.who:hover { background: var(--hover); }
+.who.on { border-color: var(--c); background: color-mix(in srgb, var(--c) 8%, transparent); }
+.who.off { opacity: .45; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c); margin-top: 5px; }
+.dot.now { animation: ring 1.6s ease-out infinite; }
+@keyframes ring { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--c) 60%, transparent); } 100% { box-shadow: 0 0 0 7px transparent; } }
+.who b { font-weight: 600; }
+.who .doing { grid-column: 2 / 4; font-size: 12.5px; color: var(--mute); overflow-wrap: anywhere; }
+.who .meta { font-size: 12px; color: var(--faint); white-space: nowrap; }
+
+/* Tree (wunderbaum) themed from our tokens. */
+.treebar { padding: 8px 12px 4px; flex: none; }
+.treebar label { font-size: 12px; color: var(--mute); display: flex; gap: 6px; align-items: center; cursor: pointer; }
+#tree { flex: 1; min-height: 0; }
+div.wunderbaum { --wb-font-stack: -apple-system, BlinkMacSystemFont, "Inter", sans-serif; --wb-node-text-color: var(--ink); --wb-background-color: var(--panel); --wb-alternate-row-color: var(--panel); --wb-alternate-row-color-hover: var(--hover); --wb-hover-color: var(--hover); --wb-active-color: color-mix(in srgb, var(--a0) 14%, transparent); --wb-active-hover-color: color-mix(in srgb, var(--a0) 20%, transparent); --wb-active-border-color: transparent; --wb-active-hover-border-color: transparent; --wb-focus-border-color: transparent; --wb-border-color: var(--line); --wb-dim-color: var(--faint); --wb-active-color-grayscale: var(--hover); --wb-active-border-color-grayscale: transparent; --wb-active-hover-color-grayscale: var(--hover); --wb-row-outer-height: 24px; --wb-row-inner-height: 22px; border: 0; font-size: 13px; height: 100%; }
+div.wunderbaum span.wb-node { display: flex; align-items: center; min-width: 0; }
+div.wunderbaum span.wb-node > i { flex: none; }
+div.wunderbaum span.wb-title { flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }
+div.wunderbaum i.wb-icon, div.wunderbaum i.wb-expander { color: var(--faint); }
+.tn { margin-left: auto; padding: 0 8px 0 6px; display: flex; gap: 6px; align-items: center; font: 11px var(--mono); flex: none; }
+.tn .ad { color: var(--add); } .tn .de { color: var(--del); }
+.dots { display: inline-flex; gap: 3px; }
+.dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--c); display: inline-block; }
+.wb-row.fresh { animation: flash 2.4s ease-out; }
+div.wunderbaum .wb-row.changed span.wb-title { font-weight: 600; }
+
+/* Overview: sessions > files > changes, each a <details>. */
+.repo { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--mute); margin: 18px 0 8px; }
+.repo:first-child { margin-top: 0; }
+details > summary { list-style: none; cursor: pointer; }
+details > summary::-webkit-details-marker { display: none; }
+.car { display: inline-block; width: 12px; color: var(--faint); transition: transform .15s; flex: none; font-size: 10px; }
+details[open] > summary .car { transform: rotate(90deg); }
+.grp { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--c); border-radius: 8px; margin-bottom: 10px; }
+.grp > summary { display: flex; gap: 10px; align-items: baseline; padding: 9px 12px; }
+.grp > summary .name { font-weight: 650; }
+.grp > summary .doing { color: var(--mute); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+.num { font: 12px var(--mono); white-space: nowrap; }
+.num .ad { color: var(--add); } .num .de { color: var(--del); }
+.files { border-top: 1px solid var(--line); }
+.file > summary { display: flex; gap: 8px; align-items: baseline; padding: 5px 12px 5px 22px; }
+.file > summary:hover, .grp > summary:hover { background: var(--hover); }
+.file + .file { border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }
+.path { font: 13px var(--mono); white-space: nowrap; }
+.path .dir { color: var(--faint); }
+.titles { color: var(--mute); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+.titles i { font-style: normal; color: var(--faint); padding: 0 5px; }
+.open { border: 0; background: none; color: var(--faint); cursor: pointer; padding: 0 2px; }
+.open:hover { color: var(--ink); }
+.fresh { animation: flash 2.4s ease-out; }
+@keyframes flash { 0% { background: color-mix(in srgb, var(--c, var(--a0)) 30%, transparent); } 100% { background: transparent; } }
+
+/* Diff lines: author gutter, then sign, then code. */
+.hunks { padding: 0 0 6px 22px; }
+.hunk { margin: 4px 12px 8px 0; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.hunk > header { display: flex; gap: 8px; align-items: baseline; padding: 4px 10px; background: var(--code); font-size: 12.5px; }
+.hunk > header .t { font-weight: 600; }
+.hunk > header .t.where { font: 12px var(--mono); font-weight: 400; color: var(--mute); }
+.hunk > header .ln { margin-left: auto; font: 11px var(--mono); color: var(--faint); }
+.diff { font: 12.5px/1.55 var(--mono); overflow-x: auto; background: var(--panel); }
+.l { display: grid; grid-template-columns: 3px 40px 18px 1fr; white-space: pre-wrap; overflow-wrap: anywhere; }
+.l .g { background: var(--c, transparent); }
+.l .n { color: var(--faint); text-align: right; padding-right: 6px; user-select: none; font-size: 11px; }
+.l .s { color: var(--faint); text-align: center; user-select: none; }
+.l.add { background: color-mix(in srgb, var(--c, var(--nobody)) var(--tint), transparent); }
+.l.del { background: color-mix(in srgb, var(--del) 6%, transparent); }
+.l.del code { color: var(--mute); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--c, var(--nobody)) 70%, transparent); }
+.l code { font: inherit; background: none; padding: 0; }
+.l mark { background: color-mix(in srgb, var(--c) 30%, transparent); color: inherit; border-radius: 2px; }
+.l del { color: var(--mute); }
+.more { padding: 4px 10px; color: var(--mute); cursor: pointer; font-size: 12px; background: var(--code); }
 .empty { color: var(--mute); padding: 40px 0; }
-.legend { color: var(--mute); font-size: 12px; margin: 0 0 12px; }
+
+/* Focused file. */
+.bar { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+.bar .btn { border: 1px solid var(--line); background: var(--panel); padding: 3px 10px; border-radius: 7px; cursor: pointer; }
+.bar .crumb { font: 13px var(--mono); color: var(--mute); overflow-wrap: anywhere; }
+.bar .crumb b { color: var(--ink); font-weight: 600; }
+.doc { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 24px 40px 40px; max-width: 920px; }
+.markdown-body { background: transparent; font-size: 15px; }
+.markdown-body .hljs, .diff .hljs { background: transparent; }
+.sec > summary { display: flex; align-items: baseline; gap: 6px; }
+.sec > summary > :is(h1, h2, h3, h4, h5, h6) { flex: 1; margin-bottom: 8px; }
+.sec > summary .car { align-self: center; }
+.sec .chg-titles { font-size: 12px; color: var(--mute); font-weight: 400; display: flex; gap: 6px; flex-wrap: wrap; align-self: center; }
+.chip { font-size: 11.5px; padding: 0 7px; border-radius: 10px; background: color-mix(in srgb, var(--c) var(--tint), transparent); border: 1px solid color-mix(in srgb, var(--c) 40%, transparent); white-space: nowrap; color: var(--ink); }
+.sec-body { padding-left: 18px; }
+.markdown-body .chg { border-left: 3px solid var(--c); padding-left: 10px; margin-left: -13px; }
+.markdown-body mark { background: color-mix(in srgb, var(--c) var(--tint), transparent); color: inherit; border-bottom: 2px solid var(--c); padding: 0 1px; }
+.markdown-body del { color: var(--c); opacity: .75; }
+.markdown-body div.ins { border-left: 3px solid var(--c); background: color-mix(in srgb, var(--c) calc(var(--tint) / 2), transparent); padding: 1px 10px; margin-left: -13px; }
+.markdown-body div.dels { border-left: 3px solid var(--c); padding: 1px 10px; margin-left: -13px; text-decoration: line-through; color: var(--mute); }
+.src { padding: 0; overflow: hidden; }
+
+/* Activity feed. */
+.ev { display: grid; grid-template-columns: 10px 1fr; gap: 0 8px; padding: 6px 6px; border-radius: 6px; cursor: pointer; }
+.ev:hover { background: var(--hover); }
+.ev .dot { width: 8px; height: 8px; margin-top: 6px; }
+.ev .t { font-size: 13px; overflow-wrap: anywhere; }
+.ev .w { grid-column: 2; font-size: 11.5px; color: var(--faint); overflow-wrap: anywhere; }
+.ev.off { display: none; }
+
+/* Finder. */
+dialog { border: 1px solid var(--line); border-radius: 10px; padding: 0; width: min(640px, calc(100vw - 32px)); background: var(--panel); color: var(--ink); box-shadow: 0 20px 60px rgba(0,0,0,.25); margin-top: 12vh; }
+dialog::backdrop { background: rgba(0,0,0,.25); }
+dialog input { width: 100%; border: 0; border-bottom: 1px solid var(--line); padding: 12px 14px; font: 15px inherit; background: transparent; color: var(--ink); outline: none; }
+#hits { list-style: none; margin: 0; padding: 6px; max-height: 50vh; overflow: auto; }
+#hits li { display: flex; gap: 8px; align-items: baseline; padding: 5px 8px; border-radius: 6px; cursor: pointer; }
+#hits li.on { background: var(--hover); }
+#hits .k { font-size: 11px; color: var(--faint); width: 14px; flex: none; }
+#hits .p { font: 12px var(--mono); color: var(--mute); margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+@media (max-width: 1100px) { .app { grid-template-columns: 260px minmax(0, 1fr); } .right { display: none; } }
 @media (max-width: 760px) {
   .app { grid-template-columns: 1fr; }
-  aside { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
-  main { padding: 16px; }
-  .doc { padding: 20px 16px; }
+  .rail { position: static; height: auto; }
+  .left { border-right: 0; border-bottom: 1px solid var(--line); }
+  #tree { height: 40vh; flex: none; }
+  main { padding: 12px 16px 60px; }
+  .doc { padding: 16px; }
+  .find { min-width: 0; }
+  .find span { display: none; }
+  .seg kbd { display: none; }
+  .titles { display: none; }
+  .grp > summary .mute, .grp > summary .doing { display: none; }
 }
 </style>
 </head>
 <body>
+<header class="top">
+  <h1><span class="live" id="live"></span>Peers</h1>
+  <div class="seg" id="zoom"><button data-zoom="1"><kbd>1</kbd>Sessions</button><button data-zoom="2"><kbd>2</kbd>Files</button><button data-zoom="3"><kbd>3</kbd>Changes</button></div>
+  <button class="find" id="findbtn"><i class="bi bi-search"></i><span>Find a file or heading</span><kbd style="margin-left:auto">⌘K</kbd></button>
+</header>
 <div class="app">
-  <aside id="side"></aside>
+  <aside class="rail left">
+    <div id="legend"></div>
+    <div class="treebar"><label><input type="checkbox" id="changed"> Changed files only</label></div>
+    <div id="tree"></div>
+  </aside>
   <main id="main"></main>
+  <aside class="rail right"><div class="label">Activity</div><div id="feed"></div></aside>
 </div>
+<dialog id="finder"><input id="q" placeholder="Find a file or heading" autocomplete="off" spellcheck="false"><ul id="hits"></ul></dialog>
 <script type="module">
 import { marked } from '/vendor/marked.mjs'
-const S = { state: null, focus: null, mode: null, only: null, docs: new Map(), open: new Set(), live: false }
-const color = new Map()
-const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-const ago = t => { const s = Math.max(1, Math.round((Date.now() - t) / 1000)); return s < 60 ? `${s}s` : s < 3600 ? `${Math.round(s / 60)}m` : `${Math.round(s / 3600)}h` }
-const c = id => (id && color.has(id) ? `var(--a${color.get(id) % 8})` : 'var(--nobody)')
-const sessions = () => S.state.repos.flatMap(r => r.sessions)
-const nameOf = id => sessions().find(s => s.id === id)?.name ?? 'nobody'
-const isDoc = rel => /\.(md|mdx|markdown)$/i.test(rel)
+import { Wunderbaum } from '/vendor/wunderbaum.mjs'
+import Fuse from '/vendor/fuse.mjs'
+import { Idiomorph } from '/vendor/idiomorph.mjs'
+import hljs from '/vendor/highlight.mjs'
 
-function side() {
-  const st = S.state
-  let h = `<h1><span class="pulse ${S.live ? '' : 'off'}"></span>Peers live</h1>`
-  for (const r of st.repos) {
-    h += `<div class="repo">${esc(r.name)}</div>`
-    for (const s of r.sessions) {
-      const n = r.files.filter(f => f.authors.includes(s.id)).length
-      h += `<div class="sess ${S.only === s.id ? 'on' : ''}" data-only="${s.id}" style="--c:${c(s.id)}">
-        <span class="dot ${Date.now() - s.updated < 60000 ? 'now' : ''}"></span>
-        <div><div class="sname">${esc(s.name)}</div>${s.title ? `<div class="sub">${esc(s.title)}</div>` : ''}
-        <div class="sub">${n} file${n === 1 ? '' : 's'} · ${ago(s.updated)} ago${s.commits.length ? ` · ${s.commits.length} commit${s.commits.length === 1 ? '' : 's'}` : ''}</div></div></div>`
-    }
-    const files = r.files.filter(f => !S.only || f.authors.includes(S.only))
-    h += `<ul class="flist">${files.map(f => `<li class="${S.focus?.rel === f.rel && S.focus?.root === r.root ? 'on' : ''}" data-root="${esc(r.root)}" data-rel="${esc(f.rel)}">
-      <span class="dots">${(f.authors.length ? f.authors : [null]).map(a => `<i style="--c:${c(a)}"></i>`).join('')}</span>${esc(f.rel)}</li>`).join('')}</ul>`
+// Open state: a <details> is open when the zoom level reaches its depth, unless the viewer flipped it.
+// Both persist per viewer. Depth 2 = sessions open (files show), 3 = files open (changes show).
+const saved = (() => { try { return JSON.parse(localStorage.getItem('peers-view') ?? '{}') } catch { return {} } })()
+const S = { state: null, focus: null, mode: null, only: null, zoom: saved.zoom ?? 2, flip: new Set(saved.flip ?? []), more: new Set(), live: false,
+  docs: new Map(), files: new Map(), fresh: new Map(), sigs: new Map(), lines: new Map(), freshLines: new Map(), changedOnly: !!saved.changedOnly }
+const save = () => { try { localStorage.setItem('peers-view', JSON.stringify({ zoom: S.zoom, flip: [...S.flip].slice(-500), changedOnly: S.changedOnly })) } catch {} }
+const isOpen = (id, depth) => (S.zoom >= depth) !== S.flip.has(id)
+
+const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+const ago = t => { const s = Math.max(1, Math.round((Date.now() - t) / 1000)); return s < 60 ? `${s}s` : s < 3600 ? `${Math.round(s / 60)}m` : s < 86400 ? `${Math.round(s / 3600)}h` : `${Math.round(s / 86400)}d` }
+const isDoc = rel => /\.(md|mdx|markdown)$/i.test(rel)
+const num = (a, d) => `<span class="num">${a ? `<span class="ad">+${a}</span>` : ''}${a && d ? ' ' : ''}${d ? `<span class="de">−${d}</span>` : ''}</span>`
+const pathHtml = rel => { const i = rel.lastIndexOf('/'); return `<span class="path">${i < 0 ? '' : `<span class="dir">${esc(rel.slice(0, i + 1))}</span>`}${esc(rel.slice(i + 1))}</span>` }
+
+// One color per session, by start order over every repo: the /peers-view pane uses the same rule.
+let order = []
+const sessions = () => {
+  const m = new Map()
+  const named = new Map()
+  for (const r of S.state.repos) for (const s of r.sessions) {
+    if (!m.has(s.id) || m.get(s.id).updated < s.updated) m.set(s.id, s)
+    if (s.title) named.set(s.id, s)
   }
-  document.getElementById('side').innerHTML = h
+  // A session claims its task in one repo: that name holds in every repo.
+  return [...m.values()].map(s => (named.has(s.id) ? { ...s, name: named.get(s.id).name, title: named.get(s.id).title } : s))
+}
+// Rank by a session's earliest start over its repos: the pane uses the same rule.
+const rank = () => {
+  const m = new Map()
+  for (const r of S.state.repos) for (const s of r.sessions) m.set(s.id, Math.min(m.get(s.id) ?? Infinity, s.started ?? 0))
+  return [...m.keys()].sort((a, b) => m.get(a) - m.get(b))
+}
+const c = id => { const i = order.indexOf(id); return i < 0 ? 'var(--nobody)' : `var(--a${i % 8})` }
+const nameOf = id => sessions().find(s => s.id === id)?.name ?? 'nobody'
+const writing = s => Date.now() - s.updated < 20000
+
+// Syntax color per line; a language hljs does not know stays plain.
+const LANG = { mjs: 'javascript', cjs: 'javascript', jsx: 'javascript', tsx: 'typescript', mts: 'typescript', yml: 'yaml', sh: 'bash', zsh: 'bash', md: 'markdown' }
+const langOf = rel => { const e = rel.split('.').pop().toLowerCase(); const l = LANG[e] ?? e; return hljs.getLanguage(l) ? l : null }
+const hl = (s, lang) => { if (!lang || !s) return esc(s); try { return hljs.highlight(s, { language: lang, ignoreIllegals: true }).value } catch { return esc(s) } }
+
+// First changed line of a hunk, in the new file.
+const firstLine = h => { let n = h.new; for (const x of h.lines) { if (x.t !== ' ') break; n++ } return n }
+
+function legend() {
+  const ss = sessions().sort((a, b) => b.updated - a.updated)
+  const files = id => S.state.repos.reduce((n, r) => n + r.files.filter(f => f.authors.includes(id)).length, 0)
+  document.getElementById('legend').innerHTML = `<div class="label">Sessions</div>` + (ss.map(s => `
+    <div class="who ${S.only === s.id ? 'on' : S.only ? 'off' : ''}" data-only="${s.id}" style="--c:${c(s.id)}" title="Click to show only ${esc(s.name)}">
+      <span class="dot ${writing(s) ? 'now' : ''}"></span>
+      <span><b>${esc(s.name)}</b>${s.title ? ` <span class="mute">${esc(s.title)}</span>` : ''}</span>
+      <span class="meta">${files(s.id)} · ${ago(s.updated)}</span>
+      ${s.doing ? `<span class="doing">${esc(s.doing)}</span>` : ''}
+    </div>`).join('') || '<div class="faint" style="padding:6px 8px">No live sessions.</div>')
 }
 
-function lines(f, cap) {
+function diffLines(f, h, cap, root) {
+  const fresh = S.freshLines.get(`${root}\0${f.rel}`)
+  const lang = langOf(f.rel)
   let out = ''
-  let n = 0
-  for (const h of f.hunks) {
-    if (cap && n >= cap) break
-    out += `<div class="hunk-at">@@ ${h.new}${h.at ? ` · ${esc(h.at)}` : ''}</div>`
-    for (const x of h.lines) {
-      if (cap && n++ >= cap) break
-      const dim = S.only && x.t !== ' ' && x.a !== S.only
-      const cls = x.t === '+' ? 'add' : x.t === '-' ? 'del' : ''
-      const col = x.t === ' ' ? '' : `--c:${dim ? 'var(--nobody)' : c(x.a)}`
-      out += `<div class="ln ${cls}" style="${col}" title="${x.t === ' ' ? '' : esc(nameOf(x.a))}"><span class="g"></span><span class="s">${x.t === ' ' ? '' : x.t}</span><span>${esc(x.s) || ' '}</span></div>`
-    }
+  let o = h.old
+  let n = h.new
+  let i = 0
+  for (const x of h.lines) {
+    if (cap && i++ >= cap) break
+    const dim = S.only && x.t !== ' ' && x.a !== S.only
+    const cls = x.t === '+' ? 'add' : x.t === '-' ? 'del' : ''
+    const col = x.t === ' ' ? '' : `--c:${dim ? 'var(--nobody)' : c(x.a)}`
+    const ln = x.t === '-' ? o++ : x.t === '+' ? n++ : (o++, n++)
+    out += `<div class="l ${cls} ${fresh?.has(x.t + x.s) ? 'fresh' : ''}" style="${col}" title="${x.t === ' ' ? '' : esc(nameOf(x.a))}"><span class="g"></span><span class="n">${ln}</span><span class="s">${x.t === ' ' ? '' : x.t}</span><code>${hl(x.s, lang) || ' '}</code></div>`
   }
   return out
 }
 
-function card(r, f, full) {
-  const id = `${r.root}\0${f.rel}`
-  const total = f.hunks.reduce((n, h) => n + h.lines.length, 0)
-  const cap = full || S.open.has(id) ? 0 : 160
-  return `<section class="card"><header data-root="${esc(r.root)}" data-rel="${esc(f.rel)}">
-    <span class="path">${esc(f.rel)}</span>${f.isNew ? '<span class="sub">new</span>' : ''}
-    ${(f.authors.length ? f.authors : [null]).map(a => `<span class="chip" style="--c:${c(a)}">${esc(nameOf(a))}</span>`).join(' ')}
-    <span class="sub" style="margin-left:auto">${ago(f.mtime)} ago</span></header>
-    <div class="diff">${f.hunks.length ? lines(f, cap) : '<div class="more">no text diff (binary, empty or mode only)</div>'}</div>
-    ${cap && total > cap ? `<div class="more" data-open="${esc(id)}">${total - cap} more lines</div>` : ''}</section>`
+function hunkHtml(r, f, h) {
+  const id = `h:${r.root}:${f.rel}:${h.new}`
+  const cap = S.more.has(id) ? 0 : 60
+  return `<div class="hunk" style="--c:${c(h.a)}"><header><span class="t ${h.said ? '' : 'where'}">${esc(h.t || (f.isNew ? 'new file' : 'change'))}</span><span class="ln">L${firstLine(h)}</span></header>
+    <div class="diff">${diffLines(f, h, cap, r.root)}</div>${cap && h.lines.length > cap ? `<div class="more" data-more="${esc(id)}">${h.lines.length - cap} more lines</div>` : ''}</div>`
 }
 
-// Markdown in suggestion style from the server's lines (lib/doc.mjs): added text marked,
-// removed text struck, each in its author's color. Blocks keep their Markdown; inline marks escape it.
-function docHtml(d) {
+function fileRow(r, f, group, hunks) {
+  const id = `f:${group}:${r.root}:${f.rel}`
+  const adds = hunks.reduce((n, h) => n + h.lines.filter(x => x.t === '+').length, 0)
+  const dels = hunks.reduce((n, h) => n + h.lines.filter(x => x.t === '-').length, 0)
+  const said = [...new Set(hunks.filter(h => h.said).map(h => h.t))]
+  const fresh = S.fresh.has(`${r.root}\0${f.rel}`) ? 'fresh' : ''
+  return `<details class="file" data-id="${esc(id)}" data-depth="3" ${isOpen(id, 3) ? 'open' : ''}>
+    <summary class="${fresh}"><span class="car">▶</span>${pathHtml(f.rel)}${f.isNew ? ' <span class="faint">new</span>' : ''}
+      <span class="titles">${said.map(esc).join('<i>·</i>')}</span>${num(adds, dels)}<span class="faint num">${ago(f.mtime)}</span>
+      <button class="open" data-root="${esc(r.root)}" data-rel="${esc(f.rel)}" title="Open the file"><i class="bi bi-box-arrow-up-right"></i></button></summary>
+    <div class="hunks">${hunks.length ? hunks.map(h => hunkHtml(r, f, h)).join('') : '<div class="more">No text diff (binary, empty or mode only).</div>'}</div></details>`
+}
+
+// Each hunk sits under the session owning most of its lines; a file shows under each such session.
+function overview() {
+  const st = S.state
+  let out = ''
+  for (const r of st.repos) {
+    const groups = new Map(r.sessions.slice().sort((a, b) => b.updated - a.updated).map(s => [s.id, []]))
+    groups.set(null, [])
+    for (const f of r.files) {
+      const by = new Map()
+      for (const h of f.hunks) {
+        const a = groups.has(h.a) ? h.a : null
+        if (!by.has(a)) by.set(a, [])
+        by.get(a).push(h)
+      }
+      if (!f.hunks.length) for (const a of f.authors.length ? f.authors : [null]) by.set(groups.has(a) ? a : null, [])
+      for (const [a, hs] of by) groups.get(a).push([f, hs])
+    }
+    let body = ''
+    for (const [a, rows] of groups) {
+      if (S.only && a !== S.only) continue
+      const s = r.sessions.find(x => x.id === a)
+      if (!rows.length) continue
+      const id = `s:${r.root}:${a}`
+      const adds = rows.reduce((n, [, hs]) => n + hs.reduce((m, h) => m + h.lines.filter(x => x.t === '+').length, 0), 0)
+      const dels = rows.reduce((n, [, hs]) => n + hs.reduce((m, h) => m + h.lines.filter(x => x.t === '-').length, 0), 0)
+      body += `<details class="grp" data-id="${esc(id)}" data-depth="2" style="--c:${c(a)}" ${isOpen(id, 2) ? 'open' : ''}>
+        <summary><span class="car">▶</span><span class="name">${esc(s ? nameOf(a) : 'Unattributed')}</span>
+          ${s?.title ? `<span class="mute">${esc(s.title)}</span>` : ''}
+          <span class="doing">${s?.doing ? esc(s.doing) : ''}</span>
+          <span class="faint num">${rows.length} file${rows.length === 1 ? '' : 's'}</span>${num(adds, dels)}${s ? `<span class="faint num">${ago(s.updated)}</span>` : ''}</summary>
+        ${rows.length ? `<div class="files">${rows.map(([f, hs]) => fileRow(r, f, a, hs)).join('')}</div>` : ''}</details>`
+    }
+    if (body) out += `<div class="repo">${esc(r.name)}</div>${body}`
+  }
+  return out || '<div class="empty">No live sessions.</div>'
+}
+
+// A document: the server's lines (lib/doc.mjs) as Markdown, added text marked and removed text struck
+// in the author's color, folded by heading. A changed section opens at zoom 2, any section at zoom 3.
+function mdOf(ls) {
   const out = []
-  const ls = d.lines
   for (let i = 0; i < ls.length; i++) {
     const x = ls[i]
     if (x.fence) { if (x.k !== '-') out.push(x.s); continue }
@@ -149,8 +347,7 @@ function docHtml(d) {
       let j = i
       while (j + 1 < ls.length && ls[j + 1].g === x.g) j++
       const group = ls.slice(i, j + 1)
-      const col = c(group.find(y => y.a)?.a)
-      out.push('', `<div class="${x.k === '+' ? 'ins' : 'dels'}" style="--c:${col}">`, '', ...group.map(y => (x.k === '+' ? y.s : esc(y.s))), '', '</div>', '')
+      out.push('', `<div class="${x.k === '+' ? 'ins' : 'dels'}" style="--c:${c(group.find(y => y.a)?.a)}">`, '', ...group.map(y => (x.k === '+' ? y.s : esc(y.s))), '', '</div>', '')
       i = j
       continue
     }
@@ -159,68 +356,341 @@ function docHtml(d) {
     if (x.k === '~') out.push(x.pre + x.runs.map(r => tag(r.t, r.s)).join(''))
     else out.push(x.pre + tag(x.k, x.s.slice(x.pre.length)))
   }
-  return marked.parse(out.join('\n'))
+  return out.join('\n')
+}
+
+// Blocks holding an inline change get the author's bar; code blocks get syntax color.
+function blocks(html) {
+  const t = document.createElement('template')
+  t.innerHTML = html
+  for (const m of t.content.querySelectorAll('mark, del')) {
+    const b = m.closest('p, li, td, th, blockquote, h1, h2, h3, h4, h5, h6') ?? m.parentElement
+    if (b && !b.classList.contains('chg')) { b.classList.add('chg'); b.style.setProperty('--c', m.style.getPropertyValue('--c')) }
+  }
+  for (const el of t.content.querySelectorAll('pre code')) try { hljs.highlightElement(el) } catch {}
+  return t.innerHTML
+}
+
+function docView(r, f, d) {
+  const key = `${r.root}\0${f?.rel ?? S.focus.rel}`
+  if (d.html && d.zoom === S.zoom && d.flips === S.flip.size && d.only === S.only) return d.html
+  const ls = d.lines
+  const hunks = f?.hunks ?? []
+  // New-file line of each doc line ('-' lines have none), to place each change's title in its section.
+  let n = 0
+  const at = ls.map(x => (x.k === '-' ? n : ++n))
+  const secs = [{ depth: 0, start: 0, head: -1, kids: [] }]
+  const stack = [secs[0]]
+  ls.forEach((x, i) => {
+    const m = !x.fence && x.k !== '-' && /^(#{1,6})\s/.exec(x.s)
+    if (!m) return
+    const depth = m[1].length
+    while (stack.length > 1 && stack[stack.length - 1].depth >= depth) stack.pop()
+    const sec = { depth, start: i, head: i, kids: [] }
+    stack[stack.length - 1].kids.push(sec)
+    stack.push(sec)
+    secs.push(sec)
+  })
+  secs.sort((a, b) => a.start - b.start)
+  secs.forEach((s, i) => { s.end = i + 1 < secs.length ? secs[i + 1].start : ls.length })
+  const render = s => {
+    const own = ls.slice(s.head + 1, s.end)
+    const lo = at[s.start]
+    const hi = s.end < ls.length ? at[s.end] : Infinity
+    const mine = hunks.filter(h => h.said && firstLine(h) >= lo && firstLine(h) < hi)
+    const changed = ls.slice(s.start, s.kids.length ? s.kids[s.kids.length - 1].end : s.end).some(x => x.k !== '=')
+    const inner = blocks(marked.parse(mdOf(own))) + s.kids.map(render).join('')
+    if (s.head < 0) return inner
+    const id = `d:${key}:${s.start}`
+    const headHtml = blocks(marked.parse(mdOf([ls[s.head]])))
+    const chips = [...new Map(mine.map(h => [h.t, h])).values()].map(h => `<span class="chip" style="--c:${c(h.a)}">${esc(h.t)}</span>`).join('')
+    return `<details class="sec" data-id="${esc(id)}" data-depth="${changed ? 2 : 3}" data-line="${at[s.start]}" ${isOpen(id, changed ? 2 : 3) ? 'open' : ''}>
+      <summary><span class="car">▶</span>${headHtml}${chips ? `<span class="chg-titles">${chips}</span>` : ''}</summary><div class="sec-body">${inner}</div></details>`
+  }
+  d.html = `<article class="doc markdown-body">${render(secs[0])}</article>`
+  Object.assign(d, { zoom: S.zoom, flips: S.flip.size, only: S.only })
+  return d.html
+}
+
+// Code as a whole file: each changed line in its author's color, word changes marked.
+function srcView(f, d) {
+  const lang = langOf(S.focus.rel)
+  let n = 0
+  const rows = d.lines.map(x => {
+    const ln = x.k === '-' ? '' : ++n
+    const col = x.k === '=' ? '' : `--c:${c(x.a)}`
+    const cls = x.k === '+' || x.k === '~' ? 'add' : x.k === '-' ? 'del' : ''
+    const body = x.k === '~' ? esc(x.pre) + x.runs.map(r => (r.t === '+' ? `<mark>${esc(r.s)}</mark>` : r.t === '-' ? `<del>${esc(r.s)}</del>` : esc(r.s))).join('') : hl(x.s, lang)
+    return `<div class="l ${cls}" style="${col}"><span class="g"></span><span class="n">${ln}</span><span class="s">${x.k === '=' ? '' : x.k === '~' ? '±' : x.k}</span><code>${body || ' '}</code></div>`
+  })
+  return `<div class="doc src"><div class="diff">${rows.join('')}</div></div>`
 }
 
 async function loadDoc(root, rel) {
   const r = await fetch(`/api/doc?root=${encodeURIComponent(root)}&rel=${encodeURIComponent(rel)}`)
-  if (r.ok) S.docs.set(`${root}\0${rel}`, await r.json())
+  return r.ok ? r.json() : null
 }
 
-function main() {
-  const el = document.getElementById('main')
-  const st = S.state
-  if (S.focus) {
-    const r = st.repos.find(x => x.root === S.focus.root)
-    const f = r?.files.find(x => x.rel === S.focus.rel)
-    const mode = S.mode ?? (isDoc(S.focus.rel) ? 'doc' : 'diff')
-    let h = `<div class="bar"><button data-back>All changes</button>
-      <button data-mode="doc" class="${mode === 'doc' ? 'on' : ''}">Document</button>
-      <button data-mode="diff" class="${mode === 'diff' ? 'on' : ''}">Diff</button>
-      <span class="sub">${esc(r?.name ?? '')} / ${esc(S.focus.rel)}</span></div>`
-    if (!f) h += '<div class="empty">Committed or reverted: nothing uncommitted in this file now.</div>'
-    else if (mode === 'diff') h += card(r, f, true)
-    else {
-      const d = S.docs.get(`${r.root}\0${f.rel}`)
-      h += d ? `<article class="doc">${isDoc(f.rel) ? docHtml(d) : `<pre>${esc(d.text)}</pre>`}</article>` : '<div class="empty">Loading…</div>'
-    }
-    el.innerHTML = h
-    return
-  }
-  const cards = []
-  for (const r of st.repos) for (const f of r.files) if (!S.only || f.authors.includes(S.only)) cards.push(card(r, f, false))
-  el.innerHTML = `<div class="legend">Every uncommitted change in the live sessions' repos, newest first. Each line is in its author's color; grey is nobody's. Click a file to open it.${S.only ? ` Showing ${esc(nameOf(S.only))} only.` : ''}</div>`
-    + (cards.join('') || '<div class="empty">No uncommitted changes.</div>')
+function focusView() {
+  const r = S.state.repos.find(x => x.root === S.focus.root)
+  const f = r?.files.find(x => x.rel === S.focus.rel)
+  const mode = S.mode ?? (f && !isDoc(S.focus.rel) ? 'diff' : 'doc')
+  const rel = S.focus.rel
+  let out = `<div class="bar"><button class="btn" data-back><i class="bi bi-arrow-left"></i> Overview</button>
+    <span class="seg"><button data-mode="doc" class="${mode === 'doc' ? 'on' : ''}">${isDoc(rel) ? 'Document' : 'Source'}</button><button data-mode="diff" class="${mode === 'diff' ? 'on' : ''}" ${f ? '' : 'disabled'}>Changes</button></span>
+    <span class="crumb">${esc(r?.name ?? '')} / ${esc(rel.split('/').slice(0, -1).join('/'))}${rel.includes('/') ? '/' : ''}<b>${esc(rel.split('/').pop())}</b></span>
+    ${f ? `<span class="dots">${f.authors.map(a => `<i style="--c:${c(a)}" title="${esc(nameOf(a))}"></i>`).join('')}</span>${num(f.hunks.reduce((n, h) => n + h.lines.filter(x => x.t === '+').length, 0), f.hunks.reduce((n, h) => n + h.lines.filter(x => x.t === '-').length, 0))}` : '<span class="faint">no uncommitted change</span>'}</div>`
+  if (mode === 'diff' && f) return out + (f.hunks.length ? f.hunks.map(h => hunkHtml(r, f, h)).join('') : '<div class="empty">No text diff.</div>')
+  const d = S.docs.get(`${S.focus.root}\0${rel}`)
+  if (!d) return out + '<div class="empty">Loading…</div>'
+  if (d.missing) return out + '<div class="empty">This file is not in a shown repo now.</div>'
+  return out + (isDoc(rel) ? docView(r, f, d) : srcView(f, d))
 }
+
+function feed() {
+  const rows = S.state.repos.flatMap(r => r.feed.map(e => ({ ...e, root: r.root, repo: r.name }))).sort((a, b) => b.at - a.at).slice(0, 80)
+  document.getElementById('feed').innerHTML = rows.map(e => `
+    <div class="ev ${S.only && e.a !== S.only ? 'off' : ''} ${Date.now() - e.at < 15000 ? 'fresh' : ''}" style="--c:${c(e.a)}" data-root="${esc(e.root)}" data-rel="${esc(e.rels[0] ?? '')}">
+      <span class="dot"></span><span class="t ${e.t ? '' : 'mute'}">${e.kind === 'commit' ? `<i class="bi bi-check2-circle faint"></i> <span class="mono faint">${esc(e.sha)}</span> ${esc(e.t)}` : esc(e.t || 'Edited')}</span>
+      <span class="w">${esc(nameOf(e.a))} · ${ago(e.at)} · ${e.rels.slice(0, 3).map(x => esc(x.split('/').pop())).join(', ')}${e.rels.length > 3 ? ` +${e.rels.length - 3}` : ''}</span>
+    </div>`).join('') || '<div class="faint">No activity yet.</div>'
+}
+
+const morph = (el, html) => Idiomorph.morph(el, html, { morphStyle: 'innerHTML' })
 
 async function render() {
   if (!S.state) return
-  for (const s of sessions()) if (!color.has(s.id)) color.set(s.id, color.size)
-  if (S.focus && (S.mode ?? (isDoc(S.focus.rel) ? 'doc' : 'diff')) === 'doc') {
-    const f = S.state.repos.find(x => x.root === S.focus.root)?.files.find(x => x.rel === S.focus.rel)
+  order = rank()
+  if (S.focus) {
     const k = `${S.focus.root}\0${S.focus.rel}`
-    if (f && (!S.docs.has(k) || S.docs.get(k).mtime !== f.mtime)) { await loadDoc(S.focus.root, S.focus.rel); if (S.docs.has(k)) S.docs.get(k).mtime = f.mtime }
+    const f = S.state.repos.find(x => x.root === S.focus.root)?.files.find(x => x.rel === S.focus.rel)
+    const v = f ? f.mtime : 0
+    if (!S.docs.has(k) || S.docs.get(k).v !== v) S.docs.set(k, { ...((await loadDoc(S.focus.root, S.focus.rel)) ?? { missing: true }), v })
   }
-  side()
-  main()
+  document.getElementById('live').className = `live ${S.live ? 'on' : ''}`
+  for (const b of document.querySelectorAll('#zoom button')) b.classList.toggle('on', +b.dataset.zoom === S.zoom)
+  legend()
+  feed()
+  morph(document.getElementById('main'), S.focus ? focusView() : overview())
+  tree.paint()
+  if (S.jump) { const el = [...document.querySelectorAll('.sec[data-line]')].filter(x => +x.dataset.line <= S.jump).pop(); S.jump = 0; el?.scrollIntoView({ block: 'start' }) }
+}
+
+// Files whose diff changed since the last push pulse once, in place.
+function mark(st) {
+  const now = Date.now()
+  for (const r of st.repos) for (const f of r.files) {
+    const k = `${r.root}\0${f.rel}`
+    const sig = `${f.mtime}:${f.hunks.length}:${f.hunks.reduce((n, h) => n + h.lines.length, 0)}`
+    // The changed lines new since the last push pulse too.
+    const ls = new Set(f.hunks.flatMap(h => h.lines.filter(x => x.t !== ' ').map(x => x.t + x.s)))
+    if (S.sigs.has(k) && S.sigs.get(k) !== sig) {
+      S.fresh.set(k, now)
+      const was = S.lines.get(k) ?? new Set()
+      S.freshLines.set(k, new Set([...ls].filter(x => !was.has(x))))
+    }
+    S.sigs.set(k, sig)
+    S.lines.set(k, ls)
+  }
+  for (const k of S.freshLines.keys()) if (!S.fresh.has(k)) S.freshLines.delete(k)
+  for (const [k, t] of S.fresh) if (now - t > 2500) S.fresh.delete(k)
+  if (S.fresh.size) setTimeout(() => { for (const [k, t] of S.fresh) if (Date.now() - t > 2500) { S.fresh.delete(k); S.freshLines.delete(k) } render() }, 2600)
+}
+
+// The tree: every file git lists, per shown repo; a folder rolls up its files' authors and counts.
+const tree = {
+  wb: null,
+  roots: '',
+  changed: new Map(),
+  async load() {
+    const roots = S.state.repos.map(r => r.root)
+    const news = S.state.repos.flatMap(r => r.files.filter(f => f.isNew).map(f => r.root + f.rel)).join('|')
+    if (this.wb && this.roots === roots.join('|') + news) return
+    this.roots = roots.join('|') + news
+    const lists = await Promise.all(S.state.repos.map(r => fetch(`/api/files?root=${encodeURIComponent(r.root)}`).then(x => (x.ok ? x.json() : { paths: [], heads: [] }))))
+    finder.set(S.state.repos.map((r, i) => ({ r, ...lists[i] })))
+    const source = S.state.repos.map((r, i) => {
+      const top = { title: r.name, key: `${r.root}\0`, children: [], expanded: true }
+      const dirs = new Map([['', top]])
+      for (const p of lists[i].paths.slice().sort()) {
+        const parts = p.split('/')
+        for (let j = 1; j < parts.length; j++) {
+          const d = parts.slice(0, j).join('/')
+          if (!dirs.has(d)) { const n = { title: parts[j - 1], key: `${r.root}\0${d}/`, children: [] }; dirs.get(parts.slice(0, j - 1).join('/')).children.push(n); dirs.set(d, n) }
+        }
+        dirs.get(parts.slice(0, -1).join('/')).children.push({ title: parts[parts.length - 1], key: `${r.root}\0${p}` })
+      }
+      // Folders first, then files, each by name.
+      const sort = n => { n.children?.sort((a, b) => (!!b.children - !!a.children) || a.title.localeCompare(b.title)); n.children?.forEach(sort) }
+      sort(top)
+      return top
+    })
+    if (!this.wb) {
+      this.wb = new Wunderbaum({
+        element: document.getElementById('tree'),
+        source,
+        iconMap: 'bootstrap',
+        quicksearch: true,
+        filter: { mode: 'hide', autoExpand: true },
+        activate: e => { if (!/[/\0]$/.test(e.node.key)) { const [root, rel] = e.node.key.split('\0'); open(root, rel) } },
+        render: e => this.deco(e),
+        init: () => this.paint(true),
+      })
+      return
+    }
+    // A new file reloads the tree: keep what the viewer had expanded.
+    const exp = []
+    this.wb.visit(n => { if (n.expanded) exp.push(n.key) })
+    await this.wb.load(source)
+    for (const k of exp) this.wb.findKey(k)?.setExpanded(true, { noAnimation: true })
+    this.paint()
+  },
+  deco(e) {
+    const info = this.changed.get(e.node.key)
+    let tn = e.nodeElem.querySelector('.tn')
+    e.nodeElem.parentElement?.classList.toggle('changed', !!info)
+    e.nodeElem.parentElement?.classList.toggle('fresh', !!info?.fresh)
+    if (!info) { tn?.remove(); return }
+    if (!tn) { tn = document.createElement('span'); tn.className = 'tn'; e.nodeElem.append(tn) }
+    tn.innerHTML = `<span class="dots">${[...info.authors].map(a => `<i style="--c:${c(a)}"></i>`).join('')}</span>${info.adds ? `<span class="ad">+${info.adds}</span>` : ''}${info.dels ? `<span class="de">−${info.dels}</span>` : ''}`
+  },
+  // Roll each changed file up to its folders, then redraw and expand the path to each change.
+  paint(first = false) {
+    if (!this.wb) return
+    const m = new Map()
+    for (const r of S.state.repos) for (const f of r.files) {
+      if (S.only && !f.authors.includes(S.only)) continue
+      const adds = f.hunks.reduce((n, h) => n + h.lines.filter(x => x.t === '+').length, 0)
+      const dels = f.hunks.reduce((n, h) => n + h.lines.filter(x => x.t === '-').length, 0)
+      const parts = f.rel.split('/')
+      const keys = [`${r.root}\0${f.rel}`, `${r.root}\0`, ...parts.slice(0, -1).map((_, j) => `${r.root}\0${parts.slice(0, j + 1).join('/')}/`)]
+      for (const k of keys) {
+        const v = m.get(k) ?? { authors: new Set(), adds: 0, dels: 0, fresh: false }
+        for (const a of f.authors.length ? f.authors : [null]) v.authors.add(a)
+        v.adds += adds
+        v.dels += dels
+        v.fresh ||= S.fresh.has(`${r.root}\0${f.rel}`)
+        m.set(k, v)
+      }
+    }
+    this.changed = m
+    if (first) for (const k of m.keys()) if (k.endsWith('/')) this.wb.findKey(k)?.setExpanded(true)
+    if (S.changedOnly) this.wb.filterNodes(n => m.has(n.key) && !n.key.endsWith('/'), { mode: 'hide' })
+    else this.wb.clearFilter()
+    const fk = S.focus && `${S.focus.root}\0${S.focus.rel}`
+    if (fk && this.wb.getActiveNode()?.key !== fk) this.wb.findKey(fk)?.setActive(true, { noEvents: true })
+    this.wb.update('any')
+  },
+}
+
+// The finder: fuse.js over every path and every Markdown heading.
+const finder = {
+  fuse: null,
+  hits: [],
+  pick: 0,
+  set(lists) {
+    const items = []
+    for (const { r, paths, heads } of lists) {
+      for (const p of paths) items.push({ root: r.root, repo: r.name, rel: p, h: '', line: 0 })
+      for (const x of heads) items.push({ root: r.root, repo: r.name, rel: x.rel, h: x.h, line: x.line })
+    }
+    this.fuse = new Fuse(items, { keys: [{ name: 'rel', weight: 1 }, { name: 'h', weight: 1.5 }], threshold: 0.35, ignoreLocation: true })
+  },
+  show() { const d = document.getElementById('finder'); if (!d.open) d.showModal(); const q = document.getElementById('q'); q.select(); this.run(q.value) },
+  run(q) {
+    this.hits = q && this.fuse ? this.fuse.search(q, { limit: 40 }).map(x => x.item) : []
+    this.pick = 0
+    this.draw()
+  },
+  draw() {
+    document.getElementById('hits').innerHTML = this.hits.map((x, i) => `<li class="${i === this.pick ? 'on' : ''}" data-hit="${i}">
+      <span class="k">${x.h ? '#' : '<i class="bi bi-file-earmark"></i>'}</span><span>${esc(x.h || x.rel.split('/').pop())}</span><span class="p">${esc(x.repo)}/${esc(x.rel)}${x.line ? `:${x.line}` : ''}</span></li>`).join('')
+    document.querySelector('#hits li.on')?.scrollIntoView({ block: 'nearest' })
+  },
+  go(i) {
+    const x = this.hits[i]
+    if (!x) return
+    document.getElementById('finder').close()
+    open(x.root, x.rel, x.line)
+  },
+}
+
+function open(root, rel, line = 0) {
+  S.focus = { root, rel }
+  S.mode = null
+  S.jump = line
+  // A jump target folded away opens.
+  if (line) for (const k of [...S.flip]) if (k.startsWith(`d:${root}\0${rel}:`)) S.flip.delete(k)
+  if (line && S.zoom < 3) { S.zoom = 3; save() }
+  if (!line) scrollTo(0, 0)
+  render()
+}
+
+function setZoom(z) {
+  S.zoom = z
+  S.flip.clear()
+  for (const d of S.docs.values()) d.html = null
+  save()
+  render()
 }
 
 document.addEventListener('click', e => {
-  const t = e.target.closest('[data-rel],[data-only],[data-back],[data-mode],[data-open]')
+  const t = e.target.closest('[data-rel],[data-only],[data-back],[data-mode],[data-more],[data-zoom],[data-hit],#findbtn')
   if (!t) return
+  if (t.id === 'findbtn') return finder.show()
+  if (t.dataset.hit) return finder.go(+t.dataset.hit)
+  if (t.dataset.zoom) return setZoom(+t.dataset.zoom)
+  if (t.dataset.rel !== undefined && t.closest('summary')) e.preventDefault()
   if (t.dataset.only) S.only = S.only === t.dataset.only ? null : t.dataset.only
   else if (t.dataset.back !== undefined) { S.focus = null; S.mode = null }
   else if (t.dataset.mode) S.mode = t.dataset.mode
-  else if (t.dataset.open) S.open.add(t.dataset.open)
-  else { S.focus = { root: t.dataset.root, rel: t.dataset.rel }; S.mode = null; scrollTo(0, 0) }
+  else if (t.dataset.more) S.more.add(t.dataset.more)
+  else if (t.dataset.rel) return open(t.dataset.root, t.dataset.rel)
+  for (const d of S.docs.values()) d.html = null
   render()
 })
 
+// A viewer's toggle flips that one block away from the zoom default; the flip persists.
+document.addEventListener('toggle', e => {
+  const el = e.target
+  if (!(el instanceof HTMLDetailsElement) || !el.dataset.id) return
+  const id = el.dataset.id
+  if (el.open === isOpen(id, +el.dataset.depth)) return
+  S.flip.has(id) ? S.flip.delete(id) : S.flip.add(id)
+  save()
+}, true)
+
+document.addEventListener('keydown', e => {
+  const d = document.getElementById('finder')
+  if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); return finder.show() }
+  if (d.open) {
+    if (e.key === 'ArrowDown') { e.preventDefault(); finder.pick = Math.min(finder.pick + 1, finder.hits.length - 1); finder.draw() }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); finder.pick = Math.max(finder.pick - 1, 0); finder.draw() }
+    else if (e.key === 'Enter') { e.preventDefault(); finder.go(finder.pick) }
+    return
+  }
+  if (e.target.closest('input, textarea, .wunderbaum') || e.metaKey || e.ctrlKey || e.altKey) return
+  if (['1', '2', '3'].includes(e.key)) setZoom(+e.key)
+  else if (e.key === 'Escape' && S.focus) { S.focus = null; render() }
+  else if (e.key === '/') { e.preventDefault(); finder.show() }
+})
+document.getElementById('q').addEventListener('input', e => finder.run(e.target.value))
+const box = document.getElementById('changed')
+box.checked = S.changedOnly
+box.addEventListener('change', () => { S.changedOnly = box.checked; save(); tree.paint() })
+
 const es = new EventSource('/events')
-es.onopen = () => { S.live = true; if (S.state) side() }
-es.onerror = () => { S.live = false; if (S.state) side() }
-es.onmessage = m => { S.state = JSON.parse(m.data); render() }
-setInterval(() => S.state && side(), 15000)
+es.onopen = () => { S.live = true; if (S.state) render() }
+es.onerror = () => { S.live = false; document.getElementById('live').className = 'live' }
+es.onmessage = async m => {
+  const st = JSON.parse(m.data)
+  mark(st)
+  S.state = st
+  for (const d of S.docs.values()) d.html = null
+  await tree.load()
+  render()
+}
+setInterval(() => S.state && (legend(), feed()), 10000)
 </script>
 </body>
 </html>

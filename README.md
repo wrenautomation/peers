@@ -58,9 +58,17 @@ peers ls                    # every live session in this repo
 peers view                  # live page of every session's edits
 ```
 
-`peers view` opens http://127.0.0.1:6421 (`PEERS_VIEW_PORT` to change). It shows the uncommitted edits in every repo with a live session, each line in its author's color; grey is a line no ledger holds. Markdown opens as a document in suggestion style: added words marked, removed words struck. Code opens as a diff. The page updates as files change. The server starts on the first call and stops 15 minutes after the last page closes.
+`peers view` opens http://127.0.0.1:6421 (`PEERS_VIEW_PORT` to change). It shows the uncommitted edits in every repo with a live session, each line in its author's color; grey is a line no ledger holds.
 
-`/peers-view` in Claude Code (`/peers` is a built-in name) opens the same view in a pane: files by repo, a number key opens one, `d` and `f` switch document and diff, `b` goes back. The band above the prompt opens it too. The pane reads the same server and starts it when it is down.
+- Legend: one chip per session, with its task, its latest change title and its age. The chip pulses while the session writes. Click a chip to show only that session.
+- Titles: before a group of edits the agent says in one line what they do. peers keeps that line as the title of each edit, and shows it on the change, the file and the session. An edit with no such line takes the heading or function above it.
+- Zoom: `1` sessions, `2` files, `3` changes. A click folds or opens one group; the page keeps that per viewer.
+- Tree: every file git lists, with author dots and +/− rolled up to folders. `⌘K` finds a file or a Markdown heading.
+- Markdown opens as a GitHub-style document, folded by heading: added words marked, removed words struck, a bar in the author's color on each changed block. Code opens as a diff with syntax color.
+- Activity: titled edits and commits (with their subjects), newest first.
+- Live: a changed file and its new lines pulse in place; scroll and folds stay. The server starts on the first call and stops 15 minutes after the last page closes.
+
+`/peers-view` in Claude Code (`/peers` is a built-in name) opens the same view in a pane, also mid-turn; Escape or `/peers-view` again closes it. It shows the legend, the zoom levels (`1` `2` `3`), files by session with their titles, and the activity. Enter on a file opens it; `d` and `f` switch document and diff, `b` goes back. The band above the prompt opens it too. The pane reads the same server and starts it when it is down.
 
 `peers view --install --host peers.example.com` keeps the server up under launchd (log in `~/Library/Logs/peers-view.log`); `--uninstall` stops it. Run `--install` again after a plugin update. Point a Cloudflare tunnel with Access at 127.0.0.1:6421 for that host. Requests for the public host see only repos that are public on GitHub; any other host gets 403. This Mac sees all repos.
 

@@ -10,10 +10,25 @@ const INDEX = {
       root: '/r/lab',
       name: 'lab',
       sessions: [
-        { id: S1, name: 'WA-901', title: 'launch plan', updated: 1 },
-        { id: S2, name: 's-bbbb', title: null, updated: 1 },
+        { id: S1, name: 'WA-901', title: 'launch plan', doing: 'Move the launch to Monday', started: 1, updated: 60_000, commits: [] },
+        { id: S2, name: 's-bbbb', title: null, doing: null, started: 2, updated: 1, commits: [] },
       ],
-      files: [{ rel: 'plan.md', authors: [S1, S2], isNew: false, mtime: 5, adds: 3, dels: 1 }],
+      files: [
+        {
+          rel: 'plan.md',
+          authors: [S1, S2],
+          isNew: false,
+          mtime: 5,
+          adds: 3,
+          dels: 1,
+          titles: ['Move the launch to Monday'],
+          changes: [
+            { line: 2, t: 'Move the launch to Monday', said: true, a: S1, adds: 1, dels: 1 },
+            { line: 3, t: 'Launch plan', said: false, a: S2, adds: 2, dels: 0 },
+          ],
+        },
+      ],
+      feed: [{ kind: 'edit', at: 60_000, a: S1, t: 'Move the launch to Monday', rels: ['plan.md'] }],
     },
   ],
 }
@@ -40,19 +55,41 @@ test('the pane lists files and opens one as a document and a diff', async ($, on
     const body = e.url.includes('/api/index') ? INDEX : e.url.includes('/api/doc') ? DOC : HUNKS
     return { value: { status: 200, ok: true, headers: {}, text: JSON.stringify(body) } }
   })
-  on('ui.open', () => ({ value: { isPlaced: true } }))
-  on('command.register', () => ({ value: { command: 'peers-view' } }))
-  await $.command.run({
-    command: 'peers-view',
-    args: '',
-    origin: { kind: 'composer' },
-    presentation: { isFullscreen: true, columns: 200 },
+  let open = false
+  const opens: unknown[] = []
+  on('ui.open', (_, e) => {
+    open = true
+    opens.push(e)
+    return { value: { isPlaced: true } }
   })
+  on('ui.panes', () => ({ value: open ? [{ id: 'peers', title: 'Peers', isShown: true, isFocused: true, isPlaced: true }] : [] }))
+  on('ui.close', () => {
+    open = false
+    return { value: undefined }
+  })
+  on('command.register', () => ({ value: { command: 'peers-view' } }))
+  const run = () =>
+    $.command.run({ command: 'peers-view', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 200 } })
+  // A toggle: it opens with the keys and Escape to close, then a second run closes it.
+  expect((await run()).text).toBeUndefined()
+  expect(opens[0]).toMatchObject({ id: 'peers', focus: true, closeOnEscape: true })
+  await run()
+  expect(open).toBe(false)
+  await run()
 
   for (const surface of ['terminal', 'mobile'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
     expect((await ui.find({ type: 'Text', text: /launch plan/ }))?.text).toContain('WA-901')
-    await ui.press({ key: 'f:/r/lab/plan.md' })
+    // Zoom 2: the file under each session that owns a change in it, with the said title.
+    expect(await ui.find({ key: `f:${S2}:/r/lab/plan.md` })).toBeDefined()
+    expect((await ui.find({ key: `f:${S1}:/r/lab/plan.md` }))?.text).toContain('Move the launch to Monday')
+    // Zoom 1 folds the files away; a press on a group opens that one group.
+    await ui.press({ key: 'zoom1' })
+    expect(await ui.find({ key: `f:${S1}:/r/lab/plan.md` })).toBeUndefined()
+    await ui.press({ key: 'zoom3' })
+    expect((await ui.find({ type: 'Text', text: /Launch plan/ }))?.text).toContain('+2')
+    await ui.press({ key: 'zoom2' })
+    await ui.press({ key: `f:${S1}:/r/lab/plan.md` })
     expect((await ui.find({ type: 'Text', text: /We ship on/ }))?.text).toBe('We ship on FridayMonday.')
     expect((await ui.find({ type: 'Text', text: /Record the demo/ }))?.text).toBe('- Record the demo')
     await ui.press({ key: 'diff' })
@@ -61,4 +98,28 @@ test('the pane lists files and opens one as a document and a diff', async ($, on
     expect(await ui.find({ type: 'Text', text: /launch plan/ })).toBeDefined()
     await ui.unmount()
   }
+})
+
+test('the turn.step hook passes every chunk on unchanged', async ($, on) => {
+  const chunks = [
+    { kind: 'text', index: 0, text: 'Rename cap to dailyCap.\n' },
+    { kind: 'tool', index: 1, id: 'tu1', name: 'Edit' },
+    { kind: 'tool', index: 2, id: 'tu2', name: 'Edit' },
+  ] as const
+  const result = { turnId: 't', index: 0, answer: 'Rename cap to dailyCap.', toolUses: [], stopReason: 'tool_use' as const, usage: null }
+  on('turn.step', async function* () {
+    for (const c of chunks) yield c
+    return result
+  })
+  const seen: unknown[] = []
+  const it = $.turn.step({ turnId: 't', index: 0, model: 'm', messageCount: 1 })
+  for (;;) {
+    const r = await it.next()
+    if (r.done) {
+      expect(r.value).toEqual(result)
+      break
+    }
+    seen.push(r.value)
+  }
+  expect(seen).toEqual([...chunks])
 })
