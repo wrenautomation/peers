@@ -249,7 +249,10 @@ const refreshPeers = async ($: any) => {
       const files = Object.keys(p.files)
       const shared = files.filter(f => mine.files[f]).length
       const last = files.reduce((m, f) => Math.max(m, p.files[f]?.last ?? 0), p.updated)
-      list.push({ session: p.session, name: tag + nameOf(p), ticket: p.ticket, files: files.length, shared, last, started: p.started })
+      // The distinct lines their edits put in and took out: near the diff's counts, no git read.
+      const adds = files.reduce((n, f) => n + (p.files[f]?.added?.length ?? 0), 0)
+      const dels = files.reduce((n, f) => n + (p.files[f]?.removed?.length ?? 0), 0)
+      list.push({ session: p.session, name: tag + nameOf(p), ticket: p.ticket, files: files.length, shared, last, started: p.started, adds, dels })
     }
   }
   list.sort((a, b) => b.last - a.last)
@@ -379,6 +382,8 @@ export const register: Register = on => {
       await $.process.run(['mkdir', '-p', `${home}/.local/bin`], { timeoutMs: 5000 })
       await $.process.run(['ln', '-sfn', `${$.plugin.root}/bin/peers.mjs`, `${home}/.local/bin/peers`], { timeoutMs: 5000 })
     } catch {}
+    // Fill the band now: a resumed session shows its peers before the first tick or turn.
+    void refreshPeers($).catch(() => {})
     $.clock.every(3000, () => refreshPeers($))
     // immediate: it opens mid-turn, never queued behind the running turn.
     await $.command.register({ name: 'peers-view', description: "Open or close the live view of every session's edits", immediate: true })
@@ -819,7 +824,7 @@ export const register: Register = on => {
     // Each peer's name in its pane color; the page's sessions decide it once the pane has read them.
     const ix = await read($, indexAtom)
     const col = colorRule(ix.repos.length ? ix.repos.flatMap(r => r.sessions) : [...mineStarted, ...peers.map(p => ({ id: p.session, started: p.started }))])
-    // The rest stays dim; a shared-file count stands out in Wren purple.
+    // File count plain, + green, − red, shared purple, time dim.
     return (
       <Box>
         <Button key="peers-band" plain onPress={() => void openPane($)}>
@@ -828,7 +833,9 @@ export const register: Register = on => {
             <Text key={p.name}>
               <Text dimColor>{' · '}</Text>
               <Text color={col(p.session)}>{`● ${p.name}`}</Text>
-              <Text dimColor>{` ${p.files} file${p.files === 1 ? '' : 's'}`}</Text>
+              <Text>{` ${p.files} file${p.files === 1 ? '' : 's'}`}</Text>
+              {p.adds ? <Text color={KIND.add.color}>{` +${p.adds}`}</Text> : null}
+              {p.dels ? <Text color={KIND.delete.color}>{` −${p.dels}`}</Text> : null}
               {p.shared ? <Text color={SHARED}>{` (${p.shared} shared)`}</Text> : null}
               <Text dimColor>{` ${ago(now - p.last)}`}</Text>
             </Text>

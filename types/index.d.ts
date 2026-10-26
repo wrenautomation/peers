@@ -6,6 +6,8 @@ export type Peer = {
   shared: number
   last: number
   started?: number
+  adds?: number
+  dels?: number
 }
 
 // The /peers pane: what the `peers view` server answers (lib/view.mjs, lib/doc.mjs).
