@@ -86,19 +86,23 @@ details > summary { list-style: none; cursor: pointer; }
 details > summary::-webkit-details-marker { display: none; }
 .car { display: inline-block; width: 12px; color: var(--faint); transition: transform .15s; flex: none; font-size: 10px; }
 details[open] > summary .car { transform: rotate(90deg); }
-.grp { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--c); border-radius: 8px; margin-bottom: 10px; }
-.grp > summary { display: flex; gap: 10px; align-items: baseline; padding: 9px 12px; }
-.grp > summary .name { font-weight: 650; }
-.grp > summary .doing { color: var(--mute); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+/* One leading edge per level: the caret column, then --step for everything under a session. */
+#main { --step: 36px; }
+.grp { margin-bottom: 24px; }
+.grp > summary { display: flex; gap: 8px; align-items: center; padding: 6px 8px 6px 0; border-radius: 6px; }
+.grp > summary .who-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c); flex: none; }
+.grp > summary .name { font-weight: 650; white-space: nowrap; }
+.grp > summary .doing { color: var(--mute); min-width: 0; flex: 1; }
 .num { font: 12px var(--mono); white-space: nowrap; }
 .num .ad { color: var(--add); } .num .de { color: var(--del); }
-.files { border-top: 1px solid var(--line); }
-.file > summary { display: flex; gap: 8px; align-items: baseline; padding: 5px 12px 5px 22px; }
+.files { padding-left: var(--step); }
+.file > summary { display: flex; gap: 8px; align-items: baseline; padding: 4px 8px 4px 0; border-radius: 6px; }
+/* The file caret sits in the session caret's column; the path on the session name's edge. */
+.file > summary .car { margin-left: calc(-1 * var(--step)); margin-right: calc(var(--step) - 20px); }
 .file > summary:hover, .grp > summary:hover { background: var(--hover); }
-.file + .file { border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }
 .path { font: 13px var(--mono); white-space: nowrap; }
 .path .dir { color: var(--faint); }
-.titles { color: var(--mute); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+.titles { color: var(--mute); font-size: 13px; min-width: 0; flex: 1; }
 .titles i { font-style: normal; color: var(--faint); padding: 0 5px; }
 .open { border: 0; background: none; color: var(--faint); cursor: pointer; padding: 0 2px; }
 .open:hover { color: var(--ink); }
@@ -106,16 +110,16 @@ details[open] > summary .car { transform: rotate(90deg); }
 @keyframes flash { 0% { background: color-mix(in srgb, var(--c, var(--a0)) 30%, transparent); } 100% { background: transparent; } }
 
 /* Diff lines: author gutter, then sign, then code. */
-.hunks { padding: 0 0 6px 22px; }
-.hunk { margin: 4px 12px 8px 0; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.hunks { padding: 4px 0 12px; }
+.hunk { margin-bottom: 8px; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
 .hunk > header { display: flex; gap: 8px; align-items: baseline; padding: 4px 10px; background: var(--code); font-size: 12.5px; }
 .hunk > header .t { font-weight: 600; }
 .hunk > header .t.where { font: 12px var(--mono); font-weight: 400; color: var(--mute); }
 .hunk > header .ln { margin-left: auto; font: 11px var(--mono); color: var(--faint); }
 .diff { font: 12.5px/1.55 var(--mono); overflow-x: auto; background: var(--panel); }
-.l { display: grid; grid-template-columns: 3px 40px 18px 1fr; white-space: pre-wrap; overflow-wrap: anywhere; }
-.l .g { background: var(--c, transparent); }
-.l .n { color: var(--faint); text-align: right; padding-right: 6px; user-select: none; font-size: 11px; }
+.l { display: grid; grid-template-columns: 44px 18px 1fr; white-space: pre-wrap; overflow-wrap: anywhere; }
+.l .n { color: var(--faint); text-align: right; padding-right: 8px; user-select: none; font-size: 11px; }
+.l:is(.add, .del) .n { background: color-mix(in srgb, var(--c, var(--nobody)) 22%, transparent); color: var(--ink); }
 .l .s { color: var(--faint); text-align: center; user-select: none; }
 .l.add { background: color-mix(in srgb, var(--c, var(--nobody)) var(--tint), transparent); }
 .l.del { background: color-mix(in srgb, var(--del) 6%, transparent); }
@@ -134,17 +138,16 @@ details[open] > summary .car { transform: rotate(90deg); }
 .doc { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 24px 40px 40px; max-width: 920px; }
 .markdown-body { background: transparent; font-size: 15px; }
 .markdown-body .hljs, .diff .hljs { background: transparent; }
-.sec > summary { display: flex; align-items: baseline; gap: 6px; }
+.sec > summary { display: flex; align-items: baseline; gap: 6px; margin-left: -18px; }
 .sec > summary > :is(h1, h2, h3, h4, h5, h6) { flex: 1; margin-bottom: 8px; }
-.sec > summary .car { align-self: center; }
+.sec > summary .car { align-self: center; width: 12px; }
 .sec .chg-titles { font-size: 12px; color: var(--mute); font-weight: 400; display: flex; gap: 6px; flex-wrap: wrap; align-self: center; }
 .chip { font-size: 11.5px; padding: 2px 8px; border-radius: 10px; background: color-mix(in srgb, var(--c) var(--tint), transparent); border: 1px solid color-mix(in srgb, var(--c) 40%, transparent); white-space: nowrap; color: var(--ink); }
-.sec-body { padding-left: 18px; }
-.markdown-body .chg { border-left: 3px solid var(--c); padding-left: 10px; margin-left: -13px; }
+.markdown-body .chg { background: color-mix(in srgb, var(--c) calc(var(--tint) / 2), transparent); border-radius: 6px; padding: 4px 12px; margin-inline: -12px; }
 .markdown-body mark { background: color-mix(in srgb, var(--c) var(--tint), transparent); color: inherit; border-bottom: 2px solid var(--c); padding: 0 1px; }
 .markdown-body del { color: var(--c); opacity: .75; }
-.markdown-body div.ins { border-left: 3px solid var(--c); background: color-mix(in srgb, var(--c) calc(var(--tint) / 2), transparent); padding: 4px 12px; margin-left: -15px; }
-.markdown-body div.dels { border-left: 3px solid var(--c); padding: 4px 12px; margin-left: -15px; text-decoration: line-through; color: var(--mute); }
+.markdown-body div.ins { background: color-mix(in srgb, var(--c) var(--tint), transparent); border-radius: 6px; padding: 4px 12px; margin-inline: -12px; }
+.markdown-body div.dels { padding: 4px 12px; margin-inline: -12px; text-decoration: line-through; color: var(--mute); }
 .src { padding: 0; overflow: hidden; }
 
 /* Activity feed. */
@@ -273,7 +276,7 @@ function diffLines(f, h, cap, root) {
     const cls = x.t === '+' ? 'add' : x.t === '-' ? 'del' : ''
     const col = x.t === ' ' ? '' : `--c:${dim ? 'var(--nobody)' : c(x.a)}`
     const ln = x.t === '-' ? o++ : x.t === '+' ? n++ : (o++, n++)
-    out += `<div class="l ${cls} ${fresh?.has(x.t + x.s) ? 'fresh' : ''}" style="${col}" title="${x.t === ' ' ? '' : esc(nameOf(x.a))}"><span class="g"></span><span class="n">${ln}</span><span class="s">${x.t === ' ' ? '' : x.t}</span><code>${hl(x.s, lang) || ' '}</code></div>`
+    out += `<div class="l ${cls} ${fresh?.has(x.t + x.s) ? 'fresh' : ''}" style="${col}" title="${x.t === ' ' ? '' : esc(nameOf(x.a))}"><span class="n">${ln}</span><span class="s">${x.t === ' ' ? '' : x.t}</span><code>${hl(x.s, lang) || ' '}</code></div>`
   }
   return out
 }
@@ -292,7 +295,7 @@ function fileRow(r, f, group, hunks) {
   const said = [...new Set(hunks.filter(h => h.said).map(h => h.t))]
   const fresh = S.fresh.has(`${r.root}\0${f.rel}`) ? 'fresh' : ''
   return `<details class="file" data-id="${esc(id)}" data-depth="3" ${isOpen(id, 3) ? 'open' : ''}>
-    <summary class="${fresh}"><span class="car">▶</span>${pathHtml(f.rel)}${f.isNew ? ' <span class="faint">new</span>' : ''}
+    <summary class="${fresh}"><i class="car bi bi-chevron-right"></i>${pathHtml(f.rel)}${f.isNew ? ' <span class="faint">new</span>' : ''}
       <span class="titles">${said.map(esc).join('<i>·</i>')}</span>${num(adds, dels)}<span class="faint num">${ago(f.mtime)}</span>
       <button class="open" data-root="${esc(r.root)}" data-rel="${esc(f.rel)}" title="Open the file"><i class="bi bi-box-arrow-up-right"></i></button></summary>
     <div class="hunks">${hunks.length ? hunks.map(h => hunkHtml(r, f, h)).join('') : '<div class="more">No text diff (binary, empty or mode only).</div>'}</div></details>`
@@ -324,7 +327,7 @@ function overview() {
       const adds = rows.reduce((n, [, hs]) => n + hs.reduce((m, h) => m + h.lines.filter(x => x.t === '+').length, 0), 0)
       const dels = rows.reduce((n, [, hs]) => n + hs.reduce((m, h) => m + h.lines.filter(x => x.t === '-').length, 0), 0)
       body += `<details class="grp" data-id="${esc(id)}" data-depth="2" style="--c:${c(a)}" ${isOpen(id, 2) ? 'open' : ''}>
-        <summary><span class="car">▶</span><span class="name">${esc(s ? nameOf(a) : 'Unattributed')}</span>
+        <summary><i class="car bi bi-chevron-right"></i><span class="who-dot"></span><span class="name">${esc(s ? nameOf(a) : 'Unattributed')}</span>
           ${s?.title ? `<span class="mute">${esc(s.title)}</span>` : ''}
           <span class="doing">${s?.doing ? esc(s.doing) : ''}</span>
           <span class="faint num">${rows.length} file${rows.length === 1 ? '' : 's'}</span>${num(adds, dels)}${s ? `<span class="faint num">${ago(s.updated)}</span>` : ''}</summary>
@@ -405,7 +408,7 @@ function docView(r, f, d) {
     const headHtml = blocks(marked.parse(mdOf([ls[s.head]])))
     const chips = [...new Map(mine.map(h => [h.t, h])).values()].map(h => `<span class="chip" style="--c:${c(h.a)}">${esc(h.t)}</span>`).join('')
     return `<details class="sec" data-id="${esc(id)}" data-depth="${changed ? 2 : 3}" data-line="${at[s.start]}" ${isOpen(id, changed ? 2 : 3) ? 'open' : ''}>
-      <summary><span class="car">▶</span>${headHtml}${chips ? `<span class="chg-titles">${chips}</span>` : ''}</summary><div class="sec-body">${inner}</div></details>`
+      <summary><i class="car bi bi-chevron-right"></i>${headHtml}${chips ? `<span class="chg-titles">${chips}</span>` : ''}</summary><div class="sec-body">${inner}</div></details>`
   }
   d.html = `<article class="doc markdown-body">${render(secs[0])}</article>`
   Object.assign(d, { zoom: S.zoom, flips: S.flip.size, only: S.only })
@@ -421,7 +424,7 @@ function srcView(f, d) {
     const col = x.k === '=' ? '' : `--c:${c(x.a)}`
     const cls = x.k === '+' || x.k === '~' ? 'add' : x.k === '-' ? 'del' : ''
     const body = x.k === '~' ? esc(x.pre) + x.runs.map(r => (r.t === '+' ? `<mark>${esc(r.s)}</mark>` : r.t === '-' ? `<del>${esc(r.s)}</del>` : esc(r.s))).join('') : hl(x.s, lang)
-    return `<div class="l ${cls}" style="${col}"><span class="g"></span><span class="n">${ln}</span><span class="s">${x.k === '=' ? '' : x.k === '~' ? '±' : x.k}</span><code>${body || ' '}</code></div>`
+    return `<div class="l ${cls}" style="${col}"><span class="n">${ln}</span><span class="s">${x.k === '=' ? '' : x.k === '~' ? '±' : x.k}</span><code>${body || ' '}</code></div>`
   })
   return `<div class="doc src"><div class="diff">${rows.join('')}</div></div>`
 }

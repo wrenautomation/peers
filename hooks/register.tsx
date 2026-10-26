@@ -433,6 +433,8 @@ export const register: Register = on => {
           for (const a of new Set(by)) groups.get(a)!.push(f)
         }
         const out: RenderChildren[] = []
+        // One edge: a 4-column gutter holds the caret, the author dots and ▸; names, paths and titles start after it.
+        const dots = (f: ViewFile) => (f.authors.length ? f.authors : [null]).slice(0, 3)
         for (const [a, files] of groups) {
           if (!files.length) continue
           const id = `s:${r.root}:${a}`
@@ -454,8 +456,8 @@ export const register: Register = on => {
             const said = [...new Set(cs.filter(c => c.said).map(c => c.t))]
             out.push(
               <Button key={`f:${a}:${r.root}/${f.rel}`} plain onPress={show({ root: r.root, rel: f.rel, mode: isDoc(f.rel) ? 'doc' : 'diff' })}>
-                {'   '}
-                {(f.authors.length ? f.authors : [null]).map(x => (
+                {' '.repeat(Math.max(0, 3 - dots(f).length))}
+                {dots(f).map(x => (
                   <Text color={col(x)}>●</Text>
                 ))}
                 {` ${f.rel}`}
@@ -467,8 +469,7 @@ export const register: Register = on => {
               for (const c of cs)
                 out.push(
                   <Text>
-                    {'      '}
-                    <Text color={col(c.a)}>▸ </Text>
+                    <Text color={col(c.a)}>{'  ▸ '}</Text>
                     <Text dimColor={!c.said}>{c.t || 'change'}</Text>
                     <Text dimColor>{`${num(c.adds, c.dels)} · L${c.line}`}</Text>
                   </Text>,
