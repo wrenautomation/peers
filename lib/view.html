@@ -14,7 +14,7 @@
   --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1d1f; --mute: #6e6e73; --faint: #76767c; --line: #e4e1db; --code: #f2f0eb; --hover: #efede8;
   --a0: #2f6fdf; --a1: #d9480f; --a2: #2b8a3e; --a3: #ae3ec9; --a4: #c2255c; --a5: #1098ad; --a6: #e67700; --a7: #5f3dc4;
   --nobody: #8e8e93; --tint: 13%; --add: #2b8a3e; --del: #c92a2a;
-  --k-add: #3f8f5f; --k-edit: #6e56cf; --k-delete: #c15f3c;
+  --k-add: #3f8f5f; --k-edit: #6e56cf; --k-delete: #d1453b;
   --mono: ui-monospace, "SF Mono", Menlo, monospace;
   color-scheme: light;
 }
@@ -23,7 +23,7 @@
     --bg: #111113; --panel: #18181b; --ink: #ececf0; --mute: #9a9aa2; --faint: #8b8b94; --line: #2a2a2f; --code: #212125; --hover: #232328;
     --a0: #6ea2ff; --a1: #ff8a50; --a2: #5fd27a; --a3: #d68bf0; --a4: #ff6b9d; --a5: #4fd1e6; --a6: #ffb340; --a7: #a48bff;
     --tint: 20%; --add: #5fd27a; --del: #ff6b6b;
-    --k-add: #7cc59a; --k-edit: #a594f9; --k-delete: #e08a6d;
+    --k-add: #7cc59a; --k-edit: #a594f9; --k-delete: #f07178;
     color-scheme: dark;
   }
 }
@@ -84,7 +84,7 @@ div.wunderbaum i.wb-icon, div.wunderbaum i.wb-expander { color: var(--faint); }
 .wb-row.fresh { animation: flash 2.4s ease-out; }
 div.wunderbaum .wb-row.changed span.wb-title { font-weight: 600; }
 
-/* Change kind, as VS Code marks it (A, M, D) in softer colors: green added, Wren purple edited, Claude clay deleted (struck). */
+/* Change kind, as VS Code marks it (A, M, D) in softer colors: green added, Wren purple edited, red deleted (struck). */
 .kd { font: 600 11px var(--mono); flex: none; width: 1.2em; text-align: center; color: var(--k); }
 .k-add { --k: var(--k-add); } .k-edit { --k: var(--k-edit); } .k-delete { --k: var(--k-delete); }
 :is(.path, .wb-title).k-add .base, .wb-row.k-add span.wb-title { color: var(--k-add); }

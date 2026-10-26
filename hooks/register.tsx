@@ -275,8 +275,9 @@ const PANE = 'peers'
 const VIEW = 'http://127.0.0.1:6421'
 const COLORS = ['#4a86e8', '#e8590c', '#37b24d', '#be4bdb', '#e64980', '#15aabf', '#f08c00', '#7950f2']
 const NOBODY = '#8e8e93'
-// Change kind, the page's marks: green added, Wren purple edited, Claude clay deleted (struck).
-const KIND = { add: { mark: 'A', color: '#7cc59a' }, edit: { mark: 'M', color: '#a594f9' }, delete: { mark: 'D', color: '#e08a6d' } } as const
+// Change kind, the page's marks: green added, Wren purple edited, red deleted (struck).
+const KIND = { add: { mark: 'A', color: '#7cc59a' }, edit: { mark: 'M', color: '#a594f9' }, delete: { mark: 'D', color: '#f07178' } } as const
+const SHARED = '#a594f9'
 const MAX_LINES = 600
 
 const indexAtom = atom({ plugin: 'peers', key: 'index' } as const, { sig: '', repos: [] } as ViewIndex, { shape: 'index-2' })
@@ -805,19 +806,19 @@ export const register: Register = on => {
     const peers = await read($, peersAtom)
     if (e.props.hasSurvey || peers.length === 0) return next(e)
     const now = await $.clock.now()
-    const { Box, Text } = $.ui.resolve(e)
-    const parts = peers.map(
-      p => `${p.name} ${p.files} file${p.files === 1 ? '' : 's'}${p.shared ? ` (${p.shared} shared)` : ''} ${ago(now - p.last)}`,
-    )
-    const shared = peers.some(p => p.shared > 0)
-    const { Button } = $.ui.resolve(e)
+    const { Box, Text, Button } = $.ui.resolve(e)
+    // Dim by default; only a shared-file count stands out, in Wren purple.
     return (
       <Box>
         <Button key="peers-band" plain onPress={() => void openPane($)}>
-          <Text dimColor>peers · </Text>
-          <Text dimColor={!shared} color={shared ? 'yellow' : undefined}>
-            {parts.join(' · ')}
-          </Text>
+          <Text dimColor>peers</Text>
+          {peers.map(p => (
+            <Text key={p.name}>
+              <Text dimColor>{` · ${p.name} ${p.files} file${p.files === 1 ? '' : 's'}`}</Text>
+              {p.shared ? <Text color={SHARED}>{` (${p.shared} shared)`}</Text> : null}
+              <Text dimColor>{` ${ago(now - p.last)}`}</Text>
+            </Text>
+          ))}
         </Button>
       </Box>
     )
