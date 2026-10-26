@@ -293,8 +293,10 @@ const PANE = 'peers'
 const VIEW = 'http://127.0.0.1:6421'
 const COLORS = ['#4a86e8', '#e8590c', '#37b24d', '#be4bdb', '#e64980', '#15aabf', '#f08c00', '#7950f2']
 const NOBODY = '#8e8e93'
-// Change kind, the page's marks: green added, Wren purple edited, red deleted (struck).
-const KIND = { add: { mark: 'A', color: '#7cc59a' }, edit: { mark: 'M', color: '#a594f9' }, delete: { mark: 'D', color: '#f07178' } } as const
+// Kind marks follow the session's color: M a filled chip, A bold, D struck. Diff signs and counts stay green and red.
+const ADD = '#7cc59a'
+const DEL = '#f07178'
+const MARK = { add: 'A', edit: 'M', delete: 'D' } as const
 const SHARED = '#a594f9'
 const MAX_LINES = 600
 
@@ -422,6 +424,12 @@ export const register: Register = on => {
     for (const [id, s] of named) byId.set(id, { ...byId.get(id)!, name: s.name, title: s.title })
     const col = colorRule(ix.repos.flatMap(r => r.sessions))
     const nameOf = (id: string) => byId.get(id)?.name ?? 'nobody'
+    const kindMark = (kind: 'add' | 'edit' | 'delete', color?: string) =>
+      kind === 'edit' ? (
+        <Text backgroundColor={color} color="black" bold>{` ${MARK.edit} `}</Text>
+      ) : (
+        <Text color={color} bold strikethrough={kind === 'delete'}>{` ${MARK[kind]} `}</Text>
+      )
     const show = (f: ViewFocus) => async () => {
       await update($, focusAtom, () => f)
       await loadBody($)
@@ -471,15 +479,15 @@ export const register: Register = on => {
           for (const f of files) {
             const cs = mine(f)
             const said = [...new Set(cs.filter(c => c.said).map(c => c.t))]
-            const k = KIND[f.kind ?? (f.isNew ? 'add' : 'edit')]
+            const kind = f.kind ?? (f.isNew ? 'add' : 'edit')
             out.push(
               <Button key={`f:${a}:${r.root}/${f.rel}`} plain onPress={show({ root: r.root, rel: f.rel, mode: isDoc(f.rel) ? 'doc' : 'diff' })}>
                 {' '.repeat(Math.max(0, 3 - dots(f).length))}
                 {dots(f).map(x => (
                   <Text color={col(x)}>●</Text>
                 ))}
-                <Text color={k.color} bold>{` ${k.mark} `}</Text>
-                <Text color={k.color} strikethrough={f.kind === 'delete'}>{f.rel}</Text>
+                {kindMark(kind, col(a))}
+                <Text strikethrough={kind === 'delete'} dimColor={kind === 'delete'}>{f.rel}</Text>
                 <Text dimColor>{`${f.count ? ` ${f.count} new files` : ''}${num(cs.length ? cs.reduce((n, c) => n + c.adds, 0) : f.adds, cs.length ? cs.reduce((n, c) => n + c.dels, 0) : f.dels)} · ${ago(now - f.mtime)}`}</Text>
                 {fold.zoom < 3 && said.length ? <Text dimColor>{`  ${said.join(' · ')}`}</Text> : null}
               </Button>,
@@ -611,7 +619,7 @@ export const register: Register = on => {
           <Button plain hotkey="f" dimColor={focus.mode !== 'diff'} onPress={show({ ...focus, mode: 'diff' })}>diff</Button>
         </Box>
         <Text>
-          {file ? <Text color={KIND[file.kind ?? 'edit'].color} bold>{`${KIND[file.kind ?? 'edit'].mark} `}</Text> : null}
+          {file ? kindMark(file.kind ?? 'edit', col(file.authors[0])) : null}
           <Text bold>{`${repo?.name ?? ''}/${focus.rel}`}</Text>
           {(file?.authors ?? []).map(a => (
             <Text color={col(a)}>{`  ● ${nameOf(a)}`}</Text>
@@ -824,7 +832,7 @@ export const register: Register = on => {
     // Each peer's name in its pane color; the page's sessions decide it once the pane has read them.
     const ix = await read($, indexAtom)
     const col = colorRule(ix.repos.length ? ix.repos.flatMap(r => r.sessions) : [...mineStarted, ...peers.map(p => ({ id: p.session, started: p.started }))])
-    // name files|shared +N −N time: name and diff in the peer's color, shared purple, time dim, · between peers.
+    // name files|shared +N −N time: name in the peer's color, +green −red, shared purple, time dim, · between peers.
     return (
       <Box>
         <Button key="peers-band" plain onPress={() => void openPane($)}>
@@ -836,7 +844,8 @@ export const register: Register = on => {
               <Text>{` ${p.files}`}</Text>
               <Text dimColor>|</Text>
               <Text color={p.shared ? SHARED : undefined} dimColor={!p.shared}>{`${p.shared}`}</Text>
-              {p.adds || p.dels ? <Text color={col(p.session)}>{` +${p.adds ?? 0} −${p.dels ?? 0}`}</Text> : null}
+              {p.adds ? <Text color={ADD}>{` +${p.adds}`}</Text> : null}
+              {p.dels ? <Text color={DEL}>{` −${p.dels}`}</Text> : null}
               <Text dimColor>{` ${ago(now - p.last)}`}</Text>
             </Text>
           ))}

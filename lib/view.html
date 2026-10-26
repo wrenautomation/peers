@@ -14,7 +14,6 @@
   --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1d1f; --mute: #6e6e73; --faint: #76767c; --line: #e4e1db; --code: #f2f0eb; --hover: #efede8;
   --a0: #2f6fdf; --a1: #d9480f; --a2: #2b8a3e; --a3: #ae3ec9; --a4: #c2255c; --a5: #1098ad; --a6: #e67700; --a7: #5f3dc4;
   --nobody: #8e8e93; --tint: 13%; --add: #2b8a3e; --del: #c92a2a;
-  --k-add: #3f8f5f; --k-edit: #6e56cf; --k-delete: #d1453b;
   --mono: ui-monospace, "SF Mono", Menlo, monospace;
   color-scheme: light;
 }
@@ -23,7 +22,6 @@
     --bg: #111113; --panel: #18181b; --ink: #ececf0; --mute: #9a9aa2; --faint: #8b8b94; --line: #2a2a2f; --code: #212125; --hover: #232328;
     --a0: #6ea2ff; --a1: #ff8a50; --a2: #5fd27a; --a3: #d68bf0; --a4: #ff6b9d; --a5: #4fd1e6; --a6: #ffb340; --a7: #a48bff;
     --tint: 20%; --add: #5fd27a; --del: #ff6b6b;
-    --k-add: #7cc59a; --k-edit: #a594f9; --k-delete: #f07178;
     color-scheme: dark;
   }
 }
@@ -84,12 +82,12 @@ div.wunderbaum i.wb-icon, div.wunderbaum i.wb-expander { color: var(--faint); }
 .wb-row.fresh { animation: flash 2.4s ease-out; }
 div.wunderbaum .wb-row.changed span.wb-title { font-weight: 600; }
 
-/* Change kind, as VS Code marks it (A, M, D) in softer colors: green added, Wren purple edited, red deleted (struck). */
-.kd { font: 600 11px var(--mono); flex: none; width: 1.2em; text-align: center; color: var(--k); }
-.k-add { --k: var(--k-add); } .k-edit { --k: var(--k-edit); } .k-delete { --k: var(--k-delete); }
-:is(.path, .wb-title).k-add .base, .wb-row.k-add span.wb-title { color: var(--k-add); }
-:is(.path, .wb-title).k-edit .base, .wb-row.k-edit span.wb-title { color: var(--k-edit); }
-:is(.path, .wb-title).k-delete .base, .wb-row.k-delete span.wb-title { color: var(--k-delete); text-decoration: line-through; }
+/* Change kind (A, M, D) in the session's color, told apart by shape: M filled, A outlined, D dashed and struck. */
+.kd { font: 600 11px var(--mono); flex: none; min-width: 1.5em; line-height: 1.4; text-align: center; border-radius: 3px; color: var(--c, var(--nobody)); }
+.kd.k-add { box-shadow: inset 0 0 0 1px var(--c, var(--nobody)); }
+.kd.k-edit { background: var(--c, var(--nobody)); color: var(--bg); }
+.kd.k-delete { outline: 1px dashed var(--c, var(--nobody)); outline-offset: -1px; text-decoration: line-through; }
+:is(.path, .wb-title).k-delete .base, .wb-row.k-delete span.wb-title { text-decoration: line-through; color: var(--mute); }
 .fi { width: 16px; height: 16px; flex: none; align-self: center; }
 div.wunderbaum i.wb-icon[style] { background-size: 16px; background-position: center; background-repeat: no-repeat; }
 
@@ -106,10 +104,9 @@ details[open] > summary .car { transform: rotate(90deg); }
 .grp > summary { display: flex; gap: 8px; align-items: center; padding: 6px 8px 6px 0; border-radius: 6px; }
 .grp > summary .who-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c); flex: none; }
 .grp > summary .name { font-weight: 650; white-space: nowrap; }
-.grp > summary .doing { color: var(--mute); min-width: 0; flex: 1; }
+.grp > summary .doing { color: var(--mute); min-width: 12em; flex: 1 1 12em; }
 .num { font: 12px var(--mono); white-space: nowrap; }
 .num .ad { color: var(--add); } .num .de { color: var(--del); }
-.grp .num .ad, .grp .num .de { color: var(--c); }
 .files { padding-left: var(--step); }
 .file > summary { display: flex; gap: 8px; align-items: baseline; padding: 4px 8px 4px 0; border-radius: 6px; }
 /* The file caret sits in the session caret's column; the path on the session name's edge. */
@@ -136,7 +133,7 @@ details[open] > summary .car { transform: rotate(90deg); }
 .l .n { color: var(--faint); text-align: right; padding-right: 8px; user-select: none; font-size: 11px; }
 .l:is(.add, .del) .n { background: color-mix(in srgb, var(--c, var(--nobody)) 22%, transparent); color: var(--ink); }
 .l .s { color: var(--faint); text-align: center; user-select: none; }
-.l.add .s, .l.del .s { color: var(--c); font-weight: 700; }
+.l.add .s { color: var(--add); font-weight: 700; } .l.del .s { color: var(--del); font-weight: 700; }
 .l.add { background: color-mix(in srgb, var(--c, var(--nobody)) var(--tint), transparent); }
 .l.del { background: color-mix(in srgb, var(--del) 6%, transparent); }
 .l.del code { color: var(--mute); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--c, var(--nobody)) 70%, transparent); }
@@ -242,7 +239,7 @@ const num = (a, d) => `<span class="num">${a ? `<span class="ad">+${a}</span>` :
 const pathHtml = (rel, kind = '') => { const i = rel.lastIndexOf('/', rel.length - 2); return `<span class="path k-${kind}">${i < 0 ? '' : `<span class="dir">${esc(rel.slice(0, i + 1))}</span>`}<span class="base">${esc(rel.slice(i + 1))}</span></span>` }
 const KD = { add: 'A', edit: 'M', delete: 'D' }
 const KN = { add: 'Added', edit: 'Edited', delete: 'Deleted' }
-const kd = k => (k ? `<span class="kd k-${k}" title="${KN[k]}">${KD[k]}</span>` : '')
+const kd = (k, a) => (k ? `<span class="kd k-${k}" style="--c:${c(a)}" title="${KN[k]}">${KD[k]}</span>` : '')
 
 // File and folder icons: the VS Code Material Icon Theme's own manifest, by its lookup order.
 // Names, then the longest extension, then the language VS Code gives the extension.
@@ -339,7 +336,7 @@ function fileRow(r, f, group, hunks) {
   const fresh = S.fresh.has(`${r.root}\0${f.rel}`) ? 'fresh' : ''
   return `<details class="file" data-id="${esc(id)}" data-depth="3" ${isOpen(id, 3) ? 'open' : ''}>
     <summary class="${fresh}"><i class="car bi bi-chevron-right"></i>${f.count ? iconImg(f.rel.split('/').at(-2), true) : iconImg(f.rel.split('/').pop())}${pathHtml(f.rel, f.kind)}${f.count ? `<span class="mute">${f.count} new files</span>` : ''}
-      <span class="titles">${said.map(esc).join('<i>·</i>')}</span>${num(adds, dels)}<span class="faint num">${ago(f.mtime)}</span>${kd(f.kind)}
+      <span class="titles">${said.map(esc).join('<i>·</i>')}</span>${num(adds, dels)}<span class="faint num">${ago(f.mtime)}</span>${kd(f.kind, group)}
       ${f.count ? '' : `<button class="open" data-root="${esc(r.root)}" data-rel="${esc(f.rel)}" title="Open the file"><i class="bi bi-box-arrow-up-right"></i></button>`}</summary>
     <div class="hunks">${hunks.length ? hunks.map(h => hunkHtml(r, f, h)).join('') : `<div class="more">${f.count ? 'A new folder: open its files in the tree.' : 'No text diff (binary, empty or mode only).'}</div>`}</div></details>`
 }
@@ -484,7 +481,7 @@ function focusView() {
   const rel = S.focus.rel
   let out = `<div class="bar"><button class="btn" data-back><i class="bi bi-arrow-left"></i> Overview</button>
     <span class="seg"><button data-mode="doc" class="${mode === 'doc' ? 'on' : ''}">${isDoc(rel) ? 'Document' : 'Source'}</button><button data-mode="diff" class="${mode === 'diff' ? 'on' : ''}" ${f ? '' : 'disabled'}>Changes</button></span>
-    ${f ? kd(f.kind) : ''}<span class="crumb">${esc(r?.name ?? '')} / ${esc(rel.split('/').slice(0, -1).join('/'))}${rel.includes('/') ? '/' : ''}<b>${esc(rel.split('/').pop())}</b></span>
+    ${f ? kd(f.kind, f.authors[0]) : ''}<span class="crumb">${esc(r?.name ?? '')} / ${esc(rel.split('/').slice(0, -1).join('/'))}${rel.includes('/') ? '/' : ''}<b>${esc(rel.split('/').pop())}</b></span>
     ${f ? `<span class="dots">${f.authors.map(a => `<i style="--c:${c(a)}" title="${esc(nameOf(a))}"></i>`).join('')}</span>${num(f.hunks.reduce((n, h) => n + h.lines.filter(x => x.t === '+').length, 0), f.hunks.reduce((n, h) => n + h.lines.filter(x => x.t === '-').length, 0))}` : '<span class="faint">no uncommitted change</span>'}</div>`
   if (mode === 'diff' && f) return out + (f.hunks.length ? f.hunks.map(h => hunkHtml(r, f, h)).join('') : '<div class="empty">No text diff.</div>')
   // The repo's last session ended while the file was open.
@@ -602,7 +599,7 @@ const tree = {
     for (const k of Object.keys(KD)) e.nodeElem.parentElement?.classList.toggle(`k-${k}`, info?.kind === k)
     if (!info) { tn?.remove(); return }
     if (!tn) { tn = document.createElement('span'); tn.className = 'tn'; e.nodeElem.append(tn) }
-    tn.innerHTML = `<span class="dots">${[...info.authors].map(a => `<i style="--c:${c(a)}"></i>`).join('')}</span>${info.adds ? `<span class="ad">+${info.adds}</span>` : ''}${info.dels ? `<span class="de">−${info.dels}</span>` : ''}${info.kind && !e.node.key.endsWith('/') ? kd(info.kind) : ''}`
+    tn.innerHTML = `<span class="dots">${[...info.authors].map(a => `<i style="--c:${c(a)}"></i>`).join('')}</span>${info.adds ? `<span class="ad">+${info.adds}</span>` : ''}${info.dels ? `<span class="de">−${info.dels}</span>` : ''}${info.kind && !e.node.key.endsWith('/') ? kd(info.kind, [...info.authors][0]) : ''}`
   },
   // Roll each changed file up to its folders, then redraw and expand the path to each change.
   paint(first = false) {
