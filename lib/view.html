@@ -14,6 +14,7 @@
   --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1d1f; --mute: #6e6e73; --faint: #76767c; --line: #e4e1db; --code: #f2f0eb; --hover: #efede8;
   --a0: #2f6fdf; --a1: #d9480f; --a2: #2b8a3e; --a3: #ae3ec9; --a4: #c2255c; --a5: #1098ad; --a6: #e67700; --a7: #5f3dc4;
   --nobody: #8e8e93; --tint: 13%; --add: #2b8a3e; --del: #c92a2a;
+  --k-add: #587c0c; --k-edit: #895503; --k-delete: #ad0707;
   --mono: ui-monospace, "SF Mono", Menlo, monospace;
   color-scheme: light;
 }
@@ -22,6 +23,7 @@
     --bg: #111113; --panel: #18181b; --ink: #ececf0; --mute: #9a9aa2; --faint: #8b8b94; --line: #2a2a2f; --code: #212125; --hover: #232328;
     --a0: #6ea2ff; --a1: #ff8a50; --a2: #5fd27a; --a3: #d68bf0; --a4: #ff6b9d; --a5: #4fd1e6; --a6: #ffb340; --a7: #a48bff;
     --tint: 20%; --add: #5fd27a; --del: #ff6b6b;
+    --k-add: #81b88b; --k-edit: #e2c08d; --k-delete: #c74e39;
     color-scheme: dark;
   }
 }
@@ -43,10 +45,13 @@ button { font: inherit; color: inherit; }
 .seg button.on { color: var(--ink); background: var(--hover); font-weight: 600; }
 .seg kbd, .find kbd { font: 11px var(--mono); color: var(--faint); margin-right: 4px; }
 .find { margin-left: auto; display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: var(--panel); border-radius: 7px; padding: 3px 10px; cursor: pointer; color: var(--mute); min-width: 200px; }
-.app { display: grid; grid-template-columns: 300px minmax(0, 1fr) 300px; min-height: calc(100vh - 45px); }
+.app { display: grid; grid-template-columns: 300px 5px minmax(0, 1fr) 5px 300px; min-height: calc(100vh - 45px); }
+/* A sash between columns, as VS Code's: a hairline that thickens to the accent on hover and drag. */
+.sash { position: sticky; top: 45px; height: calc(100vh - 45px); cursor: col-resize; background: linear-gradient(var(--line), var(--line)) center / 1px 100% no-repeat; transition: background-size .15s, background-color .15s; touch-action: none; }
+.sash:hover, .sash:active { background-image: linear-gradient(var(--a0), var(--a0)); background-size: 3px 100%; }
 .rail { position: sticky; top: 45px; height: calc(100vh - 45px); overflow: auto; background: var(--panel); }
-.left { border-right: 1px solid var(--line); display: flex; flex-direction: column; overflow: hidden; }
-.right { border-left: 1px solid var(--line); padding: 12px 12px 40px; }
+.left { display: flex; flex-direction: column; overflow: hidden; }
+.right { padding: 12px 12px 40px; }
 main { padding: 16px 24px 80px; min-width: 0; }
 .label { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--mute); margin: 4px 0 6px; display: flex; align-items: center; gap: 8px; }
 
@@ -72,12 +77,21 @@ div.wunderbaum span.wb-node { display: flex; align-items: center; min-width: 0; 
 div.wunderbaum span.wb-node > i { flex: none; }
 div.wunderbaum span.wb-title { flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }
 div.wunderbaum i.wb-icon, div.wunderbaum i.wb-expander { color: var(--faint); }
-.tn { margin-left: auto; padding: 0 8px 0 6px; display: flex; gap: 6px; align-items: center; font: 11px var(--mono); flex: none; }
+.tn { margin-left: auto; padding: 0 4px 0 6px; display: flex; gap: 6px; align-items: center; font: 11px var(--mono); flex: none; }
 .tn .ad { color: var(--add); } .tn .de { color: var(--del); }
 .dots { display: inline-flex; gap: 3px; }
 .dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--c); display: inline-block; }
 .wb-row.fresh { animation: flash 2.4s ease-out; }
 div.wunderbaum .wb-row.changed span.wb-title { font-weight: 600; }
+
+/* Change kind, in VS Code's git colors: A added, M edited, D deleted (struck). */
+.kd { font: 600 11px var(--mono); flex: none; width: 1.2em; text-align: center; color: var(--k); }
+.k-add { --k: var(--k-add); } .k-edit { --k: var(--k-edit); } .k-delete { --k: var(--k-delete); }
+:is(.path, .wb-title).k-add .base, .wb-row.k-add span.wb-title { color: var(--k-add); }
+:is(.path, .wb-title).k-edit .base, .wb-row.k-edit span.wb-title { color: var(--k-edit); }
+:is(.path, .wb-title).k-delete .base, .wb-row.k-delete span.wb-title { color: var(--k-delete); text-decoration: line-through; }
+.fi { width: 16px; height: 16px; flex: none; align-self: center; }
+div.wunderbaum i.wb-icon[style] { background-size: 16px; background-position: center; background-repeat: no-repeat; }
 
 /* Overview: sessions > files > changes, each a <details>. */
 .repo { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--mute); margin: 18px 0 8px; }
@@ -110,7 +124,7 @@ details[open] > summary .car { transform: rotate(90deg); }
 @keyframes flash { 0% { background: color-mix(in srgb, var(--c, var(--a0)) 30%, transparent); } 100% { background: transparent; } }
 
 /* Diff lines: author gutter, then sign, then code. */
-.hunks { padding: 4px 0 12px; }
+.hunks { padding: 4px 0 12px; margin-left: calc(-1 * var(--step)); }
 .hunk { margin-bottom: 8px; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
 .hunk > header { display: flex; gap: 8px; align-items: baseline; padding: 4px 10px; background: var(--code); font-size: 12.5px; }
 .hunk > header .t { font-weight: 600; }
@@ -121,6 +135,7 @@ details[open] > summary .car { transform: rotate(90deg); }
 .l .n { color: var(--faint); text-align: right; padding-right: 8px; user-select: none; font-size: 11px; }
 .l:is(.add, .del) .n { background: color-mix(in srgb, var(--c, var(--nobody)) 22%, transparent); color: var(--ink); }
 .l .s { color: var(--faint); text-align: center; user-select: none; }
+.l.add .s { color: var(--k-add); font-weight: 700; } .l.del .s { color: var(--k-delete); font-weight: 700; }
 .l.add { background: color-mix(in srgb, var(--c, var(--nobody)) var(--tint), transparent); }
 .l.del { background: color-mix(in srgb, var(--del) 6%, transparent); }
 .l.del code { color: var(--mute); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--c, var(--nobody)) 70%, transparent); }
@@ -168,9 +183,10 @@ dialog input { width: 100%; border: 0; border-bottom: 1px solid var(--line); pad
 #hits .k { font-size: 11px; color: var(--faint); width: 14px; flex: none; }
 #hits .p { font: 12px var(--mono); color: var(--mute); margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-@media (max-width: 1100px) { .app { grid-template-columns: 260px minmax(0, 1fr); } .right { display: none; } }
+@media (max-width: 1100px) { .app { grid-template-columns: var(--lw, 260px) 5px minmax(0, 1fr) !important; } .right, .sash.r { display: none; } }
 @media (max-width: 760px) {
-  .app { grid-template-columns: 1fr; }
+  .app { grid-template-columns: 1fr !important; }
+  .sash { display: none; }
   .rail { position: static; height: auto; }
   .left { border-right: 0; border-bottom: 1px solid var(--line); }
   #tree { height: 40vh; flex: none; }
@@ -196,7 +212,9 @@ dialog input { width: 100%; border: 0; border-bottom: 1px solid var(--line); pad
     <div class="treebar"><label><input type="checkbox" id="changed"> Changed files only</label></div>
     <div id="tree"></div>
   </aside>
+  <div class="sash l" title="Drag to resize"></div>
   <main id="main"></main>
+  <div class="sash r" title="Drag to resize"></div>
   <aside class="rail right"><div class="label">Activity</div><div id="feed"></div></aside>
 </div>
 <dialog id="finder"><input id="q" placeholder="Find a file or heading" autocomplete="off" spellcheck="false"><ul id="hits"></ul></dialog>
@@ -206,20 +224,44 @@ import { Wunderbaum } from '/vendor/wunderbaum.mjs'
 import Fuse from '/vendor/fuse.mjs'
 import { Idiomorph } from '/vendor/idiomorph.mjs'
 import hljs from '/vendor/highlight.mjs'
+import Split from '/vendor/split-grid.mjs'
 
 // Open state: a <details> is open when the zoom level reaches its depth, unless the viewer flipped it.
 // Both persist per viewer. Depth 2 = sessions open (files show), 3 = files open (changes show).
 const saved = (() => { try { return JSON.parse(localStorage.getItem('peers-view') ?? '{}') } catch { return {} } })()
 const S = { state: null, focus: null, mode: null, only: null, zoom: saved.zoom ?? 2, flip: new Set(saved.flip ?? []), more: new Set(), live: false,
   docs: new Map(), files: new Map(), fresh: new Map(), sigs: new Map(), lines: new Map(), freshLines: new Map(), changedOnly: !!saved.changedOnly }
-const save = () => { try { localStorage.setItem('peers-view', JSON.stringify({ zoom: S.zoom, flip: [...S.flip].slice(-500), changedOnly: S.changedOnly })) } catch {} }
+const save = () => { try { localStorage.setItem('peers-view', JSON.stringify({ zoom: S.zoom, flip: [...S.flip].slice(-500), changedOnly: S.changedOnly, cols: saved.cols })) } catch {} }
 const isOpen = (id, depth) => (S.zoom >= depth) !== S.flip.has(id)
 
 const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 const ago = t => { const s = Math.max(1, Math.round((Date.now() - t) / 1000)); return s < 60 ? `${s}s` : s < 3600 ? `${Math.round(s / 60)}m` : s < 86400 ? `${Math.round(s / 3600)}h` : `${Math.round(s / 86400)}d` }
 const isDoc = rel => /\.(md|mdx|markdown)$/i.test(rel)
 const num = (a, d) => `<span class="num">${a ? `<span class="ad">+${a}</span>` : ''}${a && d ? ' ' : ''}${d ? `<span class="de">−${d}</span>` : ''}</span>`
-const pathHtml = rel => { const i = rel.lastIndexOf('/'); return `<span class="path">${i < 0 ? '' : `<span class="dir">${esc(rel.slice(0, i + 1))}</span>`}${esc(rel.slice(i + 1))}</span>` }
+const pathHtml = (rel, kind = '') => { const i = rel.lastIndexOf('/'); return `<span class="path k-${kind}">${i < 0 ? '' : `<span class="dir">${esc(rel.slice(0, i + 1))}</span>`}<span class="base">${esc(rel.slice(i + 1))}</span></span>` }
+const KD = { add: 'A', edit: 'M', delete: 'D' }
+const KN = { add: 'Added', edit: 'Edited', delete: 'Deleted' }
+const kd = k => (k ? `<span class="kd k-${k}" title="${KN[k]}">${KD[k]}</span>` : '')
+
+// File and folder icons: the VS Code Material Icon Theme's own manifest, by its lookup order.
+// Names, then the longest extension, then the language VS Code gives the extension.
+const MI = await fetch('/vendor/material-icons.json').then(r => r.json()).catch(() => null)
+const LANGID = { ts: 'typescript', mts: 'typescript', cts: 'typescript', tsx: 'typescriptreact', js: 'javascript', mjs: 'javascript', cjs: 'javascript', jsx: 'javascriptreact', json: 'json', md: 'markdown', css: 'css', html: 'html', py: 'python', sh: 'shellscript', zsh: 'shellscript', yml: 'yaml', yaml: 'yaml', sql: 'sql', go: 'go', rs: 'rust', toml: 'toml', xml: 'xml', svg: 'xml' }
+const iconOf = (name, dir = false, open = false) => {
+  if (!MI) return ''
+  const n = name.toLowerCase()
+  let id
+  if (dir) id = (open ? MI.folderNamesExpanded : MI.folderNames)[n] ?? (open ? MI.folderExpanded : MI.folder)
+  else {
+    id = MI.fileNames[n]
+    const parts = n.split('.')
+    for (let j = 1; !id && j < parts.length; j++) id = MI.fileExtensions[parts.slice(j).join('.')]
+    id ??= MI.languageIds[LANGID[parts.at(-1)]] ?? MI.file
+  }
+  const f = MI.iconDefinitions[id]
+  return f ? `/vendor/material-icons/${f}` : ''
+}
+const iconImg = (name, dir) => { const u = iconOf(name, dir); return u ? `<img class="fi" src="${u}" alt="">` : '' }
 
 // One color per session, by start order over every repo: the /peers-view pane uses the same rule.
 let order = []
@@ -284,7 +326,7 @@ function diffLines(f, h, cap, root) {
 function hunkHtml(r, f, h) {
   const id = `h:${r.root}:${f.rel}:${h.new}`
   const cap = S.more.has(id) ? 0 : 60
-  return `<div class="hunk" style="--c:${c(h.a)}"><header><span class="t ${h.said ? '' : 'where'}">${esc(h.t || (f.isNew ? 'new file' : 'change'))}</span><span class="ln">L${firstLine(h)}</span></header>
+  return `<div class="hunk" style="--c:${c(h.a)}"><header><span class="t ${h.said ? '' : 'where'}">${esc(h.t || (f.kind === 'add' ? 'new file' : f.kind === 'delete' ? 'deleted file' : 'change'))}</span><span class="ln">L${firstLine(h)}</span></header>
     <div class="diff">${diffLines(f, h, cap, r.root)}</div>${cap && h.lines.length > cap ? `<div class="more" data-more="${esc(id)}">${h.lines.length - cap} more lines</div>` : ''}</div>`
 }
 
@@ -295,8 +337,8 @@ function fileRow(r, f, group, hunks) {
   const said = [...new Set(hunks.filter(h => h.said).map(h => h.t))]
   const fresh = S.fresh.has(`${r.root}\0${f.rel}`) ? 'fresh' : ''
   return `<details class="file" data-id="${esc(id)}" data-depth="3" ${isOpen(id, 3) ? 'open' : ''}>
-    <summary class="${fresh}"><i class="car bi bi-chevron-right"></i>${pathHtml(f.rel)}${f.isNew ? ' <span class="faint">new</span>' : ''}
-      <span class="titles">${said.map(esc).join('<i>·</i>')}</span>${num(adds, dels)}<span class="faint num">${ago(f.mtime)}</span>
+    <summary class="${fresh}"><i class="car bi bi-chevron-right"></i>${iconImg(f.rel.split('/').pop())}${pathHtml(f.rel, f.kind)}
+      <span class="titles">${said.map(esc).join('<i>·</i>')}</span>${num(adds, dels)}<span class="faint num">${ago(f.mtime)}</span>${kd(f.kind)}
       <button class="open" data-root="${esc(r.root)}" data-rel="${esc(f.rel)}" title="Open the file"><i class="bi bi-box-arrow-up-right"></i></button></summary>
     <div class="hunks">${hunks.length ? hunks.map(h => hunkHtml(r, f, h)).join('') : '<div class="more">No text diff (binary, empty or mode only).</div>'}</div></details>`
 }
@@ -441,7 +483,7 @@ function focusView() {
   const rel = S.focus.rel
   let out = `<div class="bar"><button class="btn" data-back><i class="bi bi-arrow-left"></i> Overview</button>
     <span class="seg"><button data-mode="doc" class="${mode === 'doc' ? 'on' : ''}">${isDoc(rel) ? 'Document' : 'Source'}</button><button data-mode="diff" class="${mode === 'diff' ? 'on' : ''}" ${f ? '' : 'disabled'}>Changes</button></span>
-    <span class="crumb">${esc(r?.name ?? '')} / ${esc(rel.split('/').slice(0, -1).join('/'))}${rel.includes('/') ? '/' : ''}<b>${esc(rel.split('/').pop())}</b></span>
+    ${f ? kd(f.kind) : ''}<span class="crumb">${esc(r?.name ?? '')} / ${esc(rel.split('/').slice(0, -1).join('/'))}${rel.includes('/') ? '/' : ''}<b>${esc(rel.split('/').pop())}</b></span>
     ${f ? `<span class="dots">${f.authors.map(a => `<i style="--c:${c(a)}" title="${esc(nameOf(a))}"></i>`).join('')}</span>${num(f.hunks.reduce((n, h) => n + h.lines.filter(x => x.t === '+').length, 0), f.hunks.reduce((n, h) => n + h.lines.filter(x => x.t === '-').length, 0))}` : '<span class="faint">no uncommitted change</span>'}</div>`
   if (mode === 'diff' && f) return out + (f.hunks.length ? f.hunks.map(h => hunkHtml(r, f, h)).join('') : '<div class="empty">No text diff.</div>')
   // The repo's last session ended while the file was open.
@@ -535,6 +577,7 @@ const tree = {
         element: document.getElementById('tree'),
         source,
         iconMap: 'bootstrap',
+        icon: e => { if (e.node.key.endsWith('\0')) return undefined; const dir = e.node.key.endsWith('/'); return iconOf(e.node.title, dir, dir && e.node.expanded) || undefined },
         quicksearch: true,
         filter: { mode: 'hide', autoExpand: true },
         activate: e => { if (!/[/\0]$/.test(e.node.key)) { const [root, rel] = e.node.key.split('\0'); open(root, rel) } },
@@ -555,9 +598,10 @@ const tree = {
     let tn = e.nodeElem.querySelector('.tn')
     e.nodeElem.parentElement?.classList.toggle('changed', !!info)
     e.nodeElem.parentElement?.classList.toggle('fresh', !!info?.fresh)
+    for (const k of Object.keys(KD)) e.nodeElem.parentElement?.classList.toggle(`k-${k}`, info?.kind === k)
     if (!info) { tn?.remove(); return }
     if (!tn) { tn = document.createElement('span'); tn.className = 'tn'; e.nodeElem.append(tn) }
-    tn.innerHTML = `<span class="dots">${[...info.authors].map(a => `<i style="--c:${c(a)}"></i>`).join('')}</span>${info.adds ? `<span class="ad">+${info.adds}</span>` : ''}${info.dels ? `<span class="de">−${info.dels}</span>` : ''}`
+    tn.innerHTML = `<span class="dots">${[...info.authors].map(a => `<i style="--c:${c(a)}"></i>`).join('')}</span>${info.adds ? `<span class="ad">+${info.adds}</span>` : ''}${info.dels ? `<span class="de">−${info.dels}</span>` : ''}${info.kind && !e.node.key.endsWith('/') ? kd(info.kind) : ''}`
   },
   // Roll each changed file up to its folders, then redraw and expand the path to each change.
   paint(first = false) {
@@ -575,6 +619,7 @@ const tree = {
         v.adds += adds
         v.dels += dels
         v.fresh ||= S.fresh.has(`${r.root}\0${f.rel}`)
+        if (k === keys[0]) v.kind = f.kind
         m.set(k, v)
       }
     }
@@ -609,7 +654,7 @@ const finder = {
   },
   draw() {
     document.getElementById('hits').innerHTML = this.hits.map((x, i) => `<li class="${i === this.pick ? 'on' : ''}" data-hit="${i}">
-      <span class="k">${x.h ? '#' : '<i class="bi bi-file-earmark"></i>'}</span><span>${esc(x.h || x.rel.split('/').pop())}</span><span class="p">${esc(x.repo)}/${esc(x.rel)}${x.line ? `:${x.line}` : ''}</span></li>`).join('')
+      <span class="k">${x.h ? '#' : iconImg(x.rel.split('/').pop())}</span><span>${esc(x.h || x.rel.split('/').pop())}</span><span class="p">${esc(x.repo)}/${esc(x.rel)}${x.line ? `:${x.line}` : ''}</span></li>`).join('')
     document.querySelector('#hits li.on')?.scrollIntoView({ block: 'nearest' })
   },
   go(i) {
@@ -683,6 +728,20 @@ document.getElementById('q').addEventListener('input', e => finder.run(e.target.
 const box = document.getElementById('changed')
 box.checked = S.changedOnly
 box.addEventListener('change', () => { S.changedOnly = box.checked; save(); tree.paint() })
+
+const app = document.querySelector('.app')
+const cols = saved.cols
+if (cols) { app.style.setProperty('--lw', cols[0]); app.style.gridTemplateColumns = `${cols[0]} 5px minmax(0, 1fr) 5px ${cols[1]}` }
+Split({
+  columnGutters: [{ track: 1, element: document.querySelector('.sash.l') }, { track: 3, element: document.querySelector('.sash.r') }],
+  columnMinSizes: { 0: 180, 2: 360, 4: 200 },
+  onDragEnd: () => {
+    const t = getComputedStyle(app).gridTemplateColumns.split(' ')
+    app.style.setProperty('--lw', t[0])
+    saved.cols = [t[0], t.at(-1)]
+    save()
+  },
+})
 
 const es = new EventSource('/events')
 es.onopen = () => { S.live = true; if (S.state) render() }

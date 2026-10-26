@@ -33,6 +33,7 @@ export type ViewFile = {
   rel: string
   authors: string[]
   isNew: boolean
+  kind: 'add' | 'edit' | 'delete'
   mtime: number
   adds: number
   dels: number
