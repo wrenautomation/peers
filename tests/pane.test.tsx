@@ -125,3 +125,25 @@ test('the turn.step hook passes every chunk on unchanged', async ($, on) => {
   }
   expect(seen).toEqual([...chunks])
 })
+
+test('the band shows one line, and [+] opens a row per peer', async ($, on) => {
+  mock.clock(on, { now: 65_000 })
+  // A peer the ledgers gave: the band reads it from state.
+  const PEERS = [{ session: S1, name: 'WA-901', files: 3, shared: 1, last: 5_000, adds: 4, dels: 2, doing: 'Move the launch to Monday', sharedFiles: ['plan.md'] }]
+  on('state.get', ($, e: any, next) => (JSON.stringify(e).includes('"peers"}') || e.key === 'peers' ? { value: { value: PEERS, version: 1 } } : next(e)))
+  const ui = await $.ui.mount({
+    plugin: 'peers',
+    component: 'AbovePrompt',
+    requestId: 'band',
+    surface: 'terminal',
+    props: { hasSurvey: false, isWorking: false, maxRows: 20, bodyColumns: 120, scroll: { offset: 0, bodyRows: 20 }, view: {} },
+  } as any)
+  expect((await ui.find({ key: 'peers-band' }))?.text).toContain('WA-901 3|1 +4 −2')
+  expect((await ui.find({ type: 'Text', text: /shared: plan.md/ }))).toBeUndefined()
+  await ui.press({ key: 'peers-wide' })
+  expect((await ui.find({ type: 'Text', text: /Move the launch to Monday/ }))?.text).toContain('WA-901')
+  expect((await ui.find({ type: 'Text', text: /shared: plan.md/ }))).toBeDefined()
+  await ui.press({ key: 'peers-wide' })
+  expect((await ui.find({ type: 'Text', text: /shared: plan.md/ }))).toBeUndefined()
+  await ui.unmount()
+})

@@ -35,6 +35,8 @@ const EDITS_MAX = 20
 const ABS_PATH = /(?:^|[\s='"])(\/[^\s'"`;|&>]+)/g
 
 const peersAtom = atom({ plugin: 'peers', key: 'peers' } as const, [] as Peer[])
+// The band: one compact line, or with [+] a row per peer.
+const wideAtom = atom({ plugin: 'peers', key: 'wide' } as const, false)
 
 const nameOf = (l: { session: string; ticket?: string }) => l.ticket ?? `s-${l.session.slice(0, 4)}`
 
@@ -247,12 +249,14 @@ const refreshPeers = async ($: any) => {
     const tag = all.size > 1 ? `${root.slice(root.lastIndexOf('/') + 1)}:` : ''
     for (const p of await peersOf($, root)) {
       const files = Object.keys(p.files)
-      const shared = files.filter(f => mine.files[f]).length
+      const sharedFiles = files.filter(f => mine.files[f])
+      const shared = sharedFiles.length
+      const doing = files.flatMap(f => p.files[f]?.edits ?? []).reduce<{ at: number; t: string } | null>((m, x) => (!m || x.at > m.at ? x : m), null)?.t
       const last = files.reduce((m, f) => Math.max(m, p.files[f]?.last ?? 0), p.updated)
       // The distinct lines their edits put in and took out: near the diff's counts, no git read.
       const adds = files.reduce((n, f) => n + (p.files[f]?.added?.length ?? 0), 0)
       const dels = files.reduce((n, f) => n + (p.files[f]?.removed?.length ?? 0), 0)
-      list.push({ session: p.session, name: tag + nameOf(p), ticket: p.ticket, files: files.length, shared, last, started: p.started, adds, dels })
+      list.push({ session: p.session, name: tag + nameOf(p), ticket: p.ticket, files: files.length, shared, last, started: p.started, adds, dels, doing, sharedFiles })
     }
   }
   list.sort((a, b) => b.last - a.last)
@@ -832,24 +836,56 @@ export const register: Register = on => {
     // Each peer's name in its pane color; the page's sessions decide it once the pane has read them.
     const ix = await read($, indexAtom)
     const col = colorRule(ix.repos.length ? ix.repos.flatMap(r => r.sessions) : [...mineStarted, ...peers.map(p => ({ id: p.session, started: p.started }))])
-    // name files|shared +N −N time: name in the peer's color, +green −red, shared purple, time dim, · between peers.
+    const wide = await read($, wideAtom)
+    const flip = () => void update($, wideAtom, w => !w)
+    const nums = (p: Peer) => (
+      <Text>
+        <Text>{` ${p.files}`}</Text>
+        <Text dimColor>|</Text>
+        <Text color={p.shared ? SHARED : undefined} dimColor={!p.shared}>{`${p.shared}`}</Text>
+        {p.adds ? <Text color={ADD}>{` +${p.adds}`}</Text> : null}
+        {p.dels ? <Text color={DEL}>{` −${p.dels}`}</Text> : null}
+        <Text dimColor>{` ${ago(now - p.last)}`}</Text>
+      </Text>
+    )
+    // Compact: name files|shared +N −N time, · between peers; name in the peer's color, +green −red, shared purple.
+    if (!wide)
+      return (
+        <Box flexDirection="row">
+          <Button key="peers-band" plain onPress={() => void openPane($)}>
+            <Text dimColor>peers</Text>
+            {peers.map(p => (
+              <Text key={p.name}>
+                <Text dimColor>{' · '}</Text>
+                <Text color={col(p.session)} bold>{p.name}</Text>
+                {nums(p)}
+              </Text>
+            ))}
+          </Button>
+          <Text> </Text>
+          <Button key="peers-wide" plain dimColor onPress={flip}>[+]</Button>
+        </Box>
+      )
+    // Verbose: a row per peer with what it last said it did, then the files we both changed.
     return (
-      <Box>
-        <Button key="peers-band" plain onPress={() => void openPane($)}>
-          <Text dimColor>peers</Text>
-          {peers.map(p => (
-            <Text key={p.name}>
-              <Text dimColor>{' · '}</Text>
+      <Box flexDirection="column">
+        <Box flexDirection="row">
+          <Button key="peers-band" plain onPress={() => void openPane($)}>
+            <Text dimColor>{`peers · ${peers.length} sessions · files|shared`}</Text>
+          </Button>
+          <Text> </Text>
+          <Button key="peers-wide" plain dimColor onPress={flip}>[−]</Button>
+        </Box>
+        {peers.map(p => (
+          <Box key={`w:${p.session}`} flexDirection="column">
+            <Text>
               <Text color={col(p.session)} bold>{p.name}</Text>
-              <Text>{` ${p.files}`}</Text>
-              <Text dimColor>|</Text>
-              <Text color={p.shared ? SHARED : undefined} dimColor={!p.shared}>{`${p.shared}`}</Text>
-              {p.adds ? <Text color={ADD}>{` +${p.adds}`}</Text> : null}
-              {p.dels ? <Text color={DEL}>{` −${p.dels}`}</Text> : null}
-              <Text dimColor>{` ${ago(now - p.last)}`}</Text>
+              {nums(p)}
+              {p.doing ? <Text dimColor>{`  ${p.doing}`}</Text> : null}
             </Text>
-          ))}
-        </Button>
+            {p.sharedFiles?.length ? <Text color={SHARED}>{`  shared: ${p.sharedFiles.join(', ')}`}</Text> : null}
+          </Box>
+        ))}
       </Box>
     )
   })

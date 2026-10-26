@@ -8,6 +8,9 @@ export type Peer = {
   started?: number
   adds?: number
   dels?: number
+  // The verbose band: what they last said their edits do, and the files we both changed.
+  doing?: string
+  sharedFiles?: string[]
 }
 
 // The /peers pane: what the `peers view` server answers (lib/view.mjs, lib/doc.mjs).
@@ -70,6 +73,6 @@ export type ViewFold = { zoom: 1 | 2 | 3; flip: string[] }
 
 declare module 'claude-code' {
   interface PluginState {
-    peers: { peers: Peer[]; index: Shaped<ViewIndex>; focus: Shaped<ViewFocus>; body: Shaped<ViewBody>; fold: Shaped<ViewFold> }
+    peers: { peers: Peer[]; index: Shaped<ViewIndex>; focus: Shaped<ViewFocus>; body: Shaped<ViewBody>; fold: Shaped<ViewFold>; wide: boolean }
   }
 }
