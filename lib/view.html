@@ -14,7 +14,7 @@
   --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1d1f; --mute: #6e6e73; --faint: #76767c; --line: #e4e1db; --code: #f2f0eb; --hover: #efede8;
   --a0: #2f6fdf; --a1: #d9480f; --a2: #2b8a3e; --a3: #ae3ec9; --a4: #c2255c; --a5: #1098ad; --a6: #e67700; --a7: #5f3dc4;
   --nobody: #8e8e93; --tint: 13%; --add: #2b8a3e; --del: #c92a2a;
-  --k-add: #587c0c; --k-edit: #895503; --k-delete: #ad0707;
+  --k-add: #3f8f5f; --k-edit: #6e56cf; --k-delete: #c15f3c;
   --mono: ui-monospace, "SF Mono", Menlo, monospace;
   color-scheme: light;
 }
@@ -23,7 +23,7 @@
     --bg: #111113; --panel: #18181b; --ink: #ececf0; --mute: #9a9aa2; --faint: #8b8b94; --line: #2a2a2f; --code: #212125; --hover: #232328;
     --a0: #6ea2ff; --a1: #ff8a50; --a2: #5fd27a; --a3: #d68bf0; --a4: #ff6b9d; --a5: #4fd1e6; --a6: #ffb340; --a7: #a48bff;
     --tint: 20%; --add: #5fd27a; --del: #ff6b6b;
-    --k-add: #81b88b; --k-edit: #e2c08d; --k-delete: #c74e39;
+    --k-add: #7cc59a; --k-edit: #a594f9; --k-delete: #e08a6d;
     color-scheme: dark;
   }
 }
@@ -84,7 +84,7 @@ div.wunderbaum i.wb-icon, div.wunderbaum i.wb-expander { color: var(--faint); }
 .wb-row.fresh { animation: flash 2.4s ease-out; }
 div.wunderbaum .wb-row.changed span.wb-title { font-weight: 600; }
 
-/* Change kind, in VS Code's git colors: A added, M edited, D deleted (struck). */
+/* Change kind, as VS Code marks it (A, M, D) in softer colors: green added, Wren purple edited, Claude clay deleted (struck). */
 .kd { font: 600 11px var(--mono); flex: none; width: 1.2em; text-align: center; color: var(--k); }
 .k-add { --k: var(--k-add); } .k-edit { --k: var(--k-edit); } .k-delete { --k: var(--k-delete); }
 :is(.path, .wb-title).k-add .base, .wb-row.k-add span.wb-title { color: var(--k-add); }
@@ -238,7 +238,7 @@ const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').re
 const ago = t => { const s = Math.max(1, Math.round((Date.now() - t) / 1000)); return s < 60 ? `${s}s` : s < 3600 ? `${Math.round(s / 60)}m` : s < 86400 ? `${Math.round(s / 3600)}h` : `${Math.round(s / 86400)}d` }
 const isDoc = rel => /\.(md|mdx|markdown)$/i.test(rel)
 const num = (a, d) => `<span class="num">${a ? `<span class="ad">+${a}</span>` : ''}${a && d ? ' ' : ''}${d ? `<span class="de">−${d}</span>` : ''}</span>`
-const pathHtml = (rel, kind = '') => { const i = rel.lastIndexOf('/'); return `<span class="path k-${kind}">${i < 0 ? '' : `<span class="dir">${esc(rel.slice(0, i + 1))}</span>`}<span class="base">${esc(rel.slice(i + 1))}</span></span>` }
+const pathHtml = (rel, kind = '') => { const i = rel.lastIndexOf('/', rel.length - 2); return `<span class="path k-${kind}">${i < 0 ? '' : `<span class="dir">${esc(rel.slice(0, i + 1))}</span>`}<span class="base">${esc(rel.slice(i + 1))}</span></span>` }
 const KD = { add: 'A', edit: 'M', delete: 'D' }
 const KN = { add: 'Added', edit: 'Edited', delete: 'Deleted' }
 const kd = k => (k ? `<span class="kd k-${k}" title="${KN[k]}">${KD[k]}</span>` : '')
@@ -337,10 +337,10 @@ function fileRow(r, f, group, hunks) {
   const said = [...new Set(hunks.filter(h => h.said).map(h => h.t))]
   const fresh = S.fresh.has(`${r.root}\0${f.rel}`) ? 'fresh' : ''
   return `<details class="file" data-id="${esc(id)}" data-depth="3" ${isOpen(id, 3) ? 'open' : ''}>
-    <summary class="${fresh}"><i class="car bi bi-chevron-right"></i>${iconImg(f.rel.split('/').pop())}${pathHtml(f.rel, f.kind)}
+    <summary class="${fresh}"><i class="car bi bi-chevron-right"></i>${f.count ? iconImg(f.rel.split('/').at(-2), true) : iconImg(f.rel.split('/').pop())}${pathHtml(f.rel, f.kind)}${f.count ? `<span class="mute">${f.count} new files</span>` : ''}
       <span class="titles">${said.map(esc).join('<i>·</i>')}</span>${num(adds, dels)}<span class="faint num">${ago(f.mtime)}</span>${kd(f.kind)}
-      <button class="open" data-root="${esc(r.root)}" data-rel="${esc(f.rel)}" title="Open the file"><i class="bi bi-box-arrow-up-right"></i></button></summary>
-    <div class="hunks">${hunks.length ? hunks.map(h => hunkHtml(r, f, h)).join('') : '<div class="more">No text diff (binary, empty or mode only).</div>'}</div></details>`
+      ${f.count ? '' : `<button class="open" data-root="${esc(r.root)}" data-rel="${esc(f.rel)}" title="Open the file"><i class="bi bi-box-arrow-up-right"></i></button>`}</summary>
+    <div class="hunks">${hunks.length ? hunks.map(h => hunkHtml(r, f, h)).join('') : `<div class="more">${f.count ? 'A new folder: open its files in the tree.' : 'No text diff (binary, empty or mode only).'}</div>`}</div></details>`
 }
 
 // Each hunk sits under the session owning most of its lines; a file shows under each such session.

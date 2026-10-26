@@ -34,6 +34,7 @@ export type ViewFile = {
   authors: string[]
   isNew: boolean
   kind: 'add' | 'edit' | 'delete'
+  count?: number
   mtime: number
   adds: number
   dels: number
