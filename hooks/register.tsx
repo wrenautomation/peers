@@ -275,6 +275,8 @@ const PANE = 'peers'
 const VIEW = 'http://127.0.0.1:6421'
 const COLORS = ['#4a86e8', '#e8590c', '#37b24d', '#be4bdb', '#e64980', '#15aabf', '#f08c00', '#7950f2']
 const NOBODY = '#8e8e93'
+// Change kind, the page's marks: green added, Wren purple edited, Claude clay deleted (struck).
+const KIND = { add: { mark: 'A', color: '#7cc59a' }, edit: { mark: 'M', color: '#a594f9' }, delete: { mark: 'D', color: '#e08a6d' } } as const
 const MAX_LINES = 600
 
 const indexAtom = atom({ plugin: 'peers', key: 'index' } as const, { sig: '', repos: [] } as ViewIndex, { shape: 'index-2' })
@@ -383,7 +385,7 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Text, Button } = $.ui.resolve(e)
+    const { Box, Text, Button, Code } = $.ui.resolve(e)
     const ix = await read($, indexAtom)
     const focus = await read($, focusAtom)
     const now = await $.clock.now()
@@ -454,14 +456,16 @@ export const register: Register = on => {
           for (const f of files) {
             const cs = mine(f)
             const said = [...new Set(cs.filter(c => c.said).map(c => c.t))]
+            const k = KIND[f.kind ?? (f.isNew ? 'add' : 'edit')]
             out.push(
               <Button key={`f:${a}:${r.root}/${f.rel}`} plain onPress={show({ root: r.root, rel: f.rel, mode: isDoc(f.rel) ? 'doc' : 'diff' })}>
                 {' '.repeat(Math.max(0, 3 - dots(f).length))}
                 {dots(f).map(x => (
                   <Text color={col(x)}>●</Text>
                 ))}
-                {` ${f.rel}`}
-                <Text dimColor>{`${f.isNew ? ' new' : ''}${num(cs.length ? cs.reduce((n, c) => n + c.adds, 0) : f.adds, cs.length ? cs.reduce((n, c) => n + c.dels, 0) : f.dels)} · ${ago(now - f.mtime)}`}</Text>
+                <Text color={k.color} bold>{` ${k.mark} `}</Text>
+                <Text color={k.color} strikethrough={f.kind === 'delete'}>{f.rel}</Text>
+                <Text dimColor>{`${f.count ? ` ${f.count} new files` : ''}${num(cs.length ? cs.reduce((n, c) => n + c.adds, 0) : f.adds, cs.length ? cs.reduce((n, c) => n + c.dels, 0) : f.dels)} · ${ago(now - f.mtime)}`}</Text>
                 {fold.zoom < 3 && said.length ? <Text dimColor>{`  ${said.join(' · ')}`}</Text> : null}
               </Button>,
             )
@@ -486,7 +490,7 @@ export const register: Register = on => {
                 {['sessions', 'files', 'changes'][z - 1]!}
               </Button>
             ))}
-            <Text dimColor>esc closes</Text>
+            <Text dimColor>↑↓ move · enter opens · ctrl+x ← wider · esc closes</Text>
           </Box>
           <Text> </Text>
           {ix.error && <Text color="warning">{ix.error}</Text>}
@@ -564,18 +568,22 @@ export const register: Register = on => {
       }
       for (const x of body.lines ?? []) rows.push(line(x))
     } else {
+      // Claude Code's own diff: its gutters, highlighter and add/remove colors. The owner's title heads each hunk.
+      let room = 90000
       for (const hunk of body.hunks ?? []) {
+        const olds = hunk.lines.filter(x => x.t !== '+').length
+        const news = hunk.lines.filter(x => x.t !== '-').length
+        const source = `@@ -${hunk.old},${olds} +${hunk.new},${news} @@\n${hunk.lines.map(x => x.t + x.s).join('\n')}`
+        if (source.length > room) break
+        room -= source.length
         rows.push(
-          <Text color={col(hunk.a)} bold={hunk.said}>{`@@ ${hunk.t || hunk.at || `line ${hunk.new}`}`}</Text>,
+          <Text>
+            <Text color={col(hunk.a)}>● </Text>
+            <Text bold={hunk.said} dimColor={!hunk.said}>{hunk.t || hunk.at || `line ${hunk.new}`}</Text>
+            <Text dimColor>{hunk.a ? `  ${nameOf(hunk.a)}` : ''}</Text>
+          </Text>,
+          <Code format="diff" path={focus.rel} source={source} />,
         )
-        for (const x of hunk.lines)
-          rows.push(
-            x.t === ' ' ? (
-              <Text dimColor>{`  ${x.s}`}</Text>
-            ) : (
-              <Text color={col(x.a)} strikethrough={x.t === '-'}>{`${x.t} ${x.s}`}</Text>
-            ),
-          )
       }
       if (!rows.length) rows.push(<Text dimColor>No text diff (binary, empty or mode only).</Text>)
     }
@@ -588,6 +596,7 @@ export const register: Register = on => {
           <Button plain hotkey="f" dimColor={focus.mode !== 'diff'} onPress={show({ ...focus, mode: 'diff' })}>diff</Button>
         </Box>
         <Text>
+          {file ? <Text color={KIND[file.kind ?? 'edit'].color} bold>{`${KIND[file.kind ?? 'edit'].mark} `}</Text> : null}
           <Text bold>{`${repo?.name ?? ''}/${focus.rel}`}</Text>
           {(file?.authors ?? []).map(a => (
             <Text color={col(a)}>{`  ● ${nameOf(a)}`}</Text>

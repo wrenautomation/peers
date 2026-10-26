@@ -68,7 +68,13 @@ peers view                  # live page of every session's edits
 - Activity: titled edits and commits (with their subjects), newest first.
 - Live: a changed file and its new lines pulse in place; scroll and folds stay. The server starts on the first call and stops 15 minutes after the last page closes.
 
-`/peers-view` in Claude Code (`/peers` is a built-in name) opens the same view in a pane, also mid-turn; Escape or `/peers-view` again closes it. It shows the legend, the zoom levels (`1` `2` `3`), files by session with their titles, and the activity. Enter on a file opens it; `d` and `f` switch document and diff, `b` goes back. The band above the prompt opens it too. The pane reads the same server and starts it when it is down.
+`/peers-view` in Claude Code (`/peers` is a built-in name) opens the same view in a pane, also mid-turn; Escape or `/peers-view` again closes it. It shows the legend, the zoom levels (`1` `2` `3`), files by session with their titles, and the activity. Each file shows its kind: `A` added, `M` edited, `D` deleted, in the page's colors. Enter on a file opens it; `d` and `f` switch document and diff, `b` goes back. The diff is Claude Code's own (its highlighter and colors), headed by the owner's change title. `ctrl+x ←` widens the pane. The band above the prompt opens it too.
+
+Up and down walk the rows with this in `~/.claude/keybindings.json` (by default they scroll, and Tab walks):
+
+```json
+{ "context": "AbovePrompt", "bindings": { "down": "abovePrompt:next", "up": "abovePrompt:previous" } }
+``` The pane reads the same server and starts it when it is down.
 
 `peers view --install --host peers.example.com` keeps the server up under launchd (log in `~/Library/Logs/peers-view.log`); `--uninstall` stops it. Run `--install` again after a plugin update. Point a Cloudflare tunnel with Access at 127.0.0.1:6421 for that host. Requests for the public host see only repos that are public on GitHub; any other host gets 403. This Mac sees all repos.
 
