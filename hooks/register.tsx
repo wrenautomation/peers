@@ -224,21 +224,36 @@ const withContext = (abs: string, r: any, line: string | null) => {
   return { ...r, context: [...(r.context ?? []), line] }
 }
 
+// One color per session by start order, the same rule as the page: a session keeps its color everywhere.
+const colorRule = (sessions: { id: string; started?: number }[]) => {
+  const first = new Map<string, number>()
+  for (const s of sessions) first.set(s.id, Math.min(first.get(s.id) ?? Infinity, s.started ?? 0))
+  const order = [...first.keys()].sort((a, b) => first.get(a)! - first.get(b)!)
+  return (id?: string | null) => {
+    const i = order.indexOf(id ?? '')
+    return i < 0 ? NOBODY : COLORS[i % COLORS.length]
+  }
+}
+let mineStarted: { id: string; started: number }[] = []
+
 const refreshPeers = async ($: any) => {
   const all = new Set<string>(roots)
   if (cwdRoot) all.add(cwdRoot)
   const list: Peer[] = []
+  const me: typeof mineStarted = []
   for (const root of all) {
     const mine = await loadMine($, root)
+    if (Object.keys(mine.files).length) me.push({ id: session, started: mine.started })
     const tag = all.size > 1 ? `${root.slice(root.lastIndexOf('/') + 1)}:` : ''
     for (const p of await peersOf($, root)) {
       const files = Object.keys(p.files)
       const shared = files.filter(f => mine.files[f]).length
       const last = files.reduce((m, f) => Math.max(m, p.files[f]?.last ?? 0), p.updated)
-      list.push({ session: p.session, name: tag + nameOf(p), ticket: p.ticket, files: files.length, shared, last })
+      list.push({ session: p.session, name: tag + nameOf(p), ticket: p.ticket, files: files.length, shared, last, started: p.started })
     }
   }
   list.sort((a, b) => b.last - a.last)
+  mineStarted = me
   const cur = await read($, peersAtom)
   if (JSON.stringify(cur) !== JSON.stringify(list)) await update($, peersAtom, () => list)
 }
@@ -393,20 +408,14 @@ export const register: Register = on => {
     const fold = await read($, foldAtom)
     // One color per session by start order, the same rule as the page: a session keeps its color in both.
     const byId = new Map<string, ViewSession>()
-    const first = new Map<string, number>()
     const named = new Map<string, ViewSession>()
     for (const s of ix.repos.flatMap(r => r.sessions)) {
       if ((byId.get(s.id)?.updated ?? -1) < s.updated) byId.set(s.id, s)
       if (s.title) named.set(s.id, s)
-      first.set(s.id, Math.min(first.get(s.id) ?? Infinity, s.started ?? 0))
     }
     // A session claims its task in one repo: that name holds in every repo.
     for (const [id, s] of named) byId.set(id, { ...byId.get(id)!, name: s.name, title: s.title })
-    const order = [...first.keys()].sort((a, b) => first.get(a)! - first.get(b)!)
-    const col = (id?: string | null) => {
-      const i = order.indexOf(id ?? '')
-      return i < 0 ? NOBODY : COLORS[i % COLORS.length]
-    }
+    const col = colorRule(ix.repos.flatMap(r => r.sessions))
     const nameOf = (id: string) => byId.get(id)?.name ?? 'nobody'
     const show = (f: ViewFocus) => async () => {
       await update($, focusAtom, () => f)
@@ -807,14 +816,19 @@ export const register: Register = on => {
     if (e.props.hasSurvey || peers.length === 0) return next(e)
     const now = await $.clock.now()
     const { Box, Text, Button } = $.ui.resolve(e)
-    // Dim by default; only a shared-file count stands out, in Wren purple.
+    // Each peer's name in its pane color; the page's sessions decide it once the pane has read them.
+    const ix = await read($, indexAtom)
+    const col = colorRule(ix.repos.length ? ix.repos.flatMap(r => r.sessions) : [...mineStarted, ...peers.map(p => ({ id: p.session, started: p.started }))])
+    // The rest stays dim; a shared-file count stands out in Wren purple.
     return (
       <Box>
         <Button key="peers-band" plain onPress={() => void openPane($)}>
           <Text dimColor>peers</Text>
           {peers.map(p => (
             <Text key={p.name}>
-              <Text dimColor>{` · ${p.name} ${p.files} file${p.files === 1 ? '' : 's'}`}</Text>
+              <Text dimColor>{' · '}</Text>
+              <Text color={col(p.session)}>{`● ${p.name}`}</Text>
+              <Text dimColor>{` ${p.files} file${p.files === 1 ? '' : 's'}`}</Text>
               {p.shared ? <Text color={SHARED}>{` (${p.shared} shared)`}</Text> : null}
               <Text dimColor>{` ${ago(now - p.last)}`}</Text>
             </Text>

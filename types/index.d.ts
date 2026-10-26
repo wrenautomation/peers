@@ -5,6 +5,7 @@ export type Peer = {
   files: number
   shared: number
   last: number
+  started?: number
 }
 
 // The /peers pane: what the `peers view` server answers (lib/view.mjs, lib/doc.mjs).
