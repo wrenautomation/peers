@@ -9,13 +9,18 @@ import { applyHunks, keys, owner, parseDiff, statusPaths } from '../lib/lines.mj
 
 const argv = process.argv.slice(2)
 const cmd = argv[0]
-const usage = `peers status | diff | commit -m "msg" [--whole] | check | ls | ready | claim <task> | close [-r reason] | files
+const usage = `peers status | diff | commit -m "msg" [--whole] | check | ls | ready | claim <task> | close [-r reason] | files | view
 Scope: the files this session edited (ledger kept by the peers mod). In a file a peer also edits, only your hunks
 (--whole takes the file as it is). Tasks: Backlog.md (\`backlog\` on PATH, board at BACKLOG_CWD).
+view: a live page (127.0.0.1:6421) of every session's uncommitted edits, each in its author's color.
 Env: PEERS_SESSION overrides the session id.`
 
 const session = process.env.PEERS_SESSION || process.env.CLAUDE_CODE_SESSION_ID
 if (!cmd || cmd === '-h' || cmd === '--help') die(usage, 0)
+if (cmd === 'view') {
+  await (await import('../lib/view.mjs')).view()
+  process.exit(0)
+}
 if (!session) die('peers: no session id. Run it from a Claude Code session, or set PEERS_SESSION.')
 
 const root = git(['rev-parse', '--show-toplevel']).trim()

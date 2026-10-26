@@ -55,7 +55,10 @@ peers files                 # your uncommitted files, for a formatter
 peers check                 # gate on that commit in ~/worktrees/<repo>-check
 peers close -r "shipped"   # Done + archived, summary carries the sha
 peers ls                    # every live session in this repo
+peers view                  # live page of every session's edits
 ```
+
+`peers view` opens http://127.0.0.1:6421 (`PEERS_VIEW_PORT` to change). It shows the uncommitted edits in every repo with a live session, each line in its author's color; grey is a line no ledger holds. Markdown opens as a document in suggestion style: added words marked, removed words struck. Code opens as a diff. The page updates as files change. The server starts on the first call and stops 15 minutes after the last page closes. It answers on this Mac only.
 
 Edit, then commit, in separate commands: the ledger records a Bash edit after that command ends, so `sed ... && peers commit` sees nothing to commit.
 
@@ -74,6 +77,7 @@ Each edit records the lines it added and removed (`lib/lines.mjs`). Only distinc
 - Binary files, new files, deleted files and files with no final newline commit whole. So does a file where a peer has no line data (a session still on an older mod).
 - A formatter on your own shared file still rewrites the peer's lines there. Those changes count as yours.
 - `peers commit` runs `post-commit` hooks but not `pre-commit` or `commit-msg`.
+- `peers view` colors a line by its text. A line the ledger does not hold (too short, or written by a non-Claude edit) shows grey. Libraries load from jsdelivr, so the page needs the network.
 - A Bash command sees every file that changed while it ran. Lines a peer recorded in that time stay theirs (0.3.2). A peer's own Bash edit records only when its command ends, so two long commands that edit the same file can still cross.
 
 ## License
