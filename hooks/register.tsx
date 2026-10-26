@@ -331,10 +331,12 @@ const poll = async ($: any) => {
 }
 
 const openPane = async ($: any) => {
+  // A view the person calls up and dismisses, as the agents view: it takes the keys, Escape closes it.
+  // Open before any await: a press counts as the person's ask only while its handler runs.
+  const opened = await $.ui.open({ id: PANE, title: 'Peers', focus: true, closeOnEscape: true })
+  if (!opened.isPlaced) $.ui.toast(`Peers: ${opened.reason}`)
   if (!tick) tick = $.clock.every(2000, () => void poll($).catch(() => {}))
   await poll($)
-  // A view the person calls up and dismisses, as the agents view: it takes the keys, Escape closes it.
-  await $.ui.open({ id: PANE, title: 'Peers', focus: true, closeOnEscape: true })
 }
 
 export const register: Register = on => {
