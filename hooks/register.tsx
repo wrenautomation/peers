@@ -1,6 +1,6 @@
 import { atom, read, update } from 'claude-code'
-import type { Register } from 'claude-code'
-import type { Peer } from '../types'
+import type { Register, RenderChildren } from 'claude-code'
+import type { Peer, ViewBody, ViewFocus, ViewIndex, ViewLine } from '../types'
 import { HINT, scan } from '../lib/guard.mjs'
 import { delta, merge, statusPaths, unclaimed } from '../lib/lines.mjs'
 
@@ -252,6 +252,72 @@ const dirty = async ($: any, root: string): Promise<Map<string, number>> => {
   return m
 }
 
+// The /peers pane: the `peers view` server's file list and documents, in the terminal.
+// The server builds one state for every reader (the page, each session's pane); the pane polls it.
+const PANE = 'peers'
+const VIEW = 'http://127.0.0.1:6421'
+const COLORS = ['#4a86e8', '#e8590c', '#37b24d', '#be4bdb', '#e64980', '#15aabf', '#f08c00', '#7950f2']
+const NOBODY = '#8e8e93'
+const MAX_LINES = 600
+
+const indexAtom = atom({ plugin: 'peers', key: 'index' } as const, { sig: '', repos: [] } as ViewIndex, { shape: 'index-1' })
+const focusAtom = atom({ plugin: 'peers', key: 'focus' } as const, null as ViewFocus, { shape: 'focus-1' })
+const bodyAtom = atom({ plugin: 'peers', key: 'body' } as const, null as ViewBody, { shape: 'body-1' })
+let tick: { cancel: () => void } | null = null
+let spawned = false
+
+const isDoc = (rel: string) => /\.(md|mdx|markdown)$/i.test(rel)
+
+// undefined: unchanged (204); null: not found.
+const getJson = async ($: any, path: string) => {
+  const r = await $.http.fetch(`${VIEW}${path}`)
+  return r.status === 204 ? undefined : r.ok ? JSON.parse(r.text) : null
+}
+
+const loadBody = async ($: any) => {
+  const f = await read($, focusAtom)
+  if (!f) return
+  const ix = await read($, indexAtom)
+  const file = ix.repos.find(r => r.root === f.root)?.files.find(x => x.rel === f.rel)
+  const mtime = file?.mtime ?? 0
+  const b = await read($, bodyAtom)
+  if (b && b.root === f.root && b.rel === f.rel && b.mode === f.mode && b.mtime === mtime) return
+  if (!file) return void (await update($, bodyAtom, () => ({ ...f, mtime })))
+  const q = `?root=${encodeURIComponent(f.root)}&rel=${encodeURIComponent(f.rel)}`
+  if (f.mode === 'doc') {
+    const d = await getJson($, `/api/doc${q}`)
+    await update($, bodyAtom, () => ({ ...f, mtime, lines: d?.lines ?? [] }))
+  } else {
+    const h = await getJson($, `/api/hunks${q}`)
+    await update($, bodyAtom, () => ({ ...f, mtime, hunks: h ?? [] }))
+  }
+}
+
+const poll = async ($: any) => {
+  const cur = await read($, indexAtom)
+  try {
+    const ix = await getJson($, `/api/index?sig=${cur.sig}`)
+    if (ix) await update($, indexAtom, () => ix)
+    else if (cur.error) await update($, indexAtom, v => ({ ...v, error: undefined }))
+    await loadBody($)
+  } catch {
+    // No server: launchd keeps one up; else start it once, as `peers view` would.
+    if (!spawned) {
+      spawned = true
+      try {
+        await $.process.run(['node', `${$.plugin.root}/bin/peers.mjs`, 'view', '--no-open'], { timeoutMs: 10000 })
+      } catch {}
+    }
+    if (!cur.error) await update($, indexAtom, v => ({ ...v, error: `No peers view server on ${VIEW}.` }))
+  }
+}
+
+const openPane = async ($: any) => {
+  if (!tick) tick = $.clock.every(2000, () => void poll($).catch(() => {}))
+  await poll($)
+  await $.ui.open({ id: PANE, title: 'Peers' })
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     home = (await $.env.get('HOME')) ?? ''
@@ -267,7 +333,142 @@ export const register: Register = on => {
       await $.process.run(['ln', '-sfn', `${$.plugin.root}/bin/peers.mjs`, `${home}/.local/bin/peers`], { timeoutMs: 5000 })
     } catch {}
     $.clock.every(3000, () => refreshPeers($))
+    await $.command.register({ name: 'peers-view', description: "Show every live session's uncommitted edits in a pane" })
     return next(e)
+  })
+
+  on('command.run', { command: 'peers-view' }, async $ => {
+    await openPane($)
+    return { text: 'Peers pane opened.' }
+  })
+
+  on('ui.close', async ($, e, next) => {
+    if (e.id === PANE) {
+      tick?.cancel()
+      tick = null
+    }
+    return next(e)
+  })
+
+  on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
+    const { Box, Text, Button } = $.ui.resolve(e)
+    const ix = await read($, indexAtom)
+    const focus = await read($, focusAtom)
+    const now = await $.clock.now()
+    const sessions = ix.repos.flatMap(r => r.sessions)
+    const col = (id?: string | null) => {
+      const i = sessions.findIndex(s => s.id === id)
+      return i < 0 ? NOBODY : COLORS[i % COLORS.length]
+    }
+    const nameOf = (id: string) => sessions.find(s => s.id === id)?.name ?? 'nobody'
+    const show = (f: ViewFocus) => async () => {
+      await update($, focusAtom, () => f)
+      await loadBody($)
+    }
+
+    if (!focus) {
+      let n = 0
+      return (
+        <Box flexDirection="column">
+          {ix.error && <Text color="warning">{ix.error}</Text>}
+          {!ix.error && ix.repos.length === 0 && <Text dimColor>No uncommitted changes in the live sessions.</Text>}
+          {ix.repos.map(r => (
+            <Box flexDirection="column" marginBottom={1}>
+              <Text bold>{r.name}</Text>
+              {r.sessions.map(s => (
+                <Text>
+                  <Text color={col(s.id)}>● </Text>
+                  {s.name}
+                  {s.title ? <Text dimColor> {s.title}</Text> : null}
+                </Text>
+              ))}
+              {r.files.map(f => {
+                n++
+                return (
+                  <Button
+                    key={`f:${r.root}/${f.rel}`}
+                    plain
+                    hotkey={n <= 9 ? String(n) : undefined}
+                    onPress={show({ root: r.root, rel: f.rel, mode: isDoc(f.rel) ? 'doc' : 'diff' })}
+                  >
+                    {(f.authors.length ? f.authors : [null]).map(a => (
+                      <Text color={col(a)}>●</Text>
+                    ))}
+                    {` ${f.rel}`}
+                    <Text dimColor>{` ${f.isNew ? 'new ' : ''}+${f.adds} -${f.dels} · ${ago(now - f.mtime)}`}</Text>
+                  </Button>
+                )
+              })}
+            </Box>
+          ))}
+        </Box>
+      )
+    }
+
+    const repo = ix.repos.find(r => r.root === focus.root)
+    const file = repo?.files.find(x => x.rel === focus.rel)
+    const body = await read($, bodyAtom)
+    const ready = body && body.root === focus.root && body.rel === focus.rel && body.mode === focus.mode
+    const rows: RenderChildren[] = []
+    if (!file) rows.push(<Text dimColor>Committed or reverted: nothing uncommitted in this file now.</Text>)
+    else if (!ready) rows.push(<Text dimColor>Loading…</Text>)
+    else if (focus.mode === 'doc') {
+      // Suggestion style: added text underlined, removed text struck, both in the author's color.
+      const line = (x: ViewLine) => {
+        const c = col(x.a)
+        if (x.k === '=') return <Text bold={/^#{1,6}\s/.test(x.s)} dimColor={x.fence}>{x.s || ' '}</Text>
+        if (x.k === '~')
+          return (
+            <Text>
+              {x.pre}
+              {(x.runs ?? []).map(r =>
+                r.t === '=' ? r.s : <Text color={c} underline={r.t === '+'} strikethrough={r.t === '-'}>{r.s}</Text>,
+              )}
+            </Text>
+          )
+        return (
+          <Text>
+            {x.pre}
+            <Text color={c} underline={x.k === '+'} strikethrough={x.k === '-'}>
+              {x.s.slice(x.pre?.length ?? 0) || ' '}
+            </Text>
+          </Text>
+        )
+      }
+      for (const x of body.lines ?? []) rows.push(line(x))
+    } else {
+      for (const hunk of body.hunks ?? []) {
+        rows.push(<Text dimColor>{`@@ ${hunk.at || `line ${hunk.new}`}`}</Text>)
+        for (const x of hunk.lines)
+          rows.push(
+            x.t === ' ' ? (
+              <Text dimColor>{`  ${x.s}`}</Text>
+            ) : (
+              <Text color={col(x.a)} strikethrough={x.t === '-'}>{`${x.t} ${x.s}`}</Text>
+            ),
+          )
+      }
+      if (!rows.length) rows.push(<Text dimColor>No text diff (binary, empty or mode only).</Text>)
+    }
+    const more = rows.length - MAX_LINES
+    return (
+      <Box flexDirection="column">
+        <Box gap={2}>
+          <Button plain hotkey="b" onPress={show(null)}>back</Button>
+          <Button plain hotkey="d" dimColor={focus.mode !== 'doc'} onPress={show({ ...focus, mode: 'doc' })}>document</Button>
+          <Button plain hotkey="f" dimColor={focus.mode !== 'diff'} onPress={show({ ...focus, mode: 'diff' })}>diff</Button>
+        </Box>
+        <Text>
+          <Text bold>{`${repo?.name ?? ''}/${focus.rel}`}</Text>
+          {(file?.authors ?? []).map(a => (
+            <Text color={col(a)}>{`  ● ${nameOf(a)}`}</Text>
+          ))}
+        </Text>
+        <Text> </Text>
+        {rows.slice(0, MAX_LINES)}
+        {more > 0 && <Text dimColor>{`${more} more lines: open \`peers view\` for the whole file.`}</Text>}
+      </Box>
+    )
   })
 
   on('session.end', async ($, e, next) => {
@@ -448,12 +649,15 @@ export const register: Register = on => {
       p => `${p.name} ${p.files} file${p.files === 1 ? '' : 's'}${p.shared ? ` (${p.shared} shared)` : ''} ${ago(now - p.last)}`,
     )
     const shared = peers.some(p => p.shared > 0)
+    const { Button } = $.ui.resolve(e)
     return (
       <Box>
-        <Text dimColor>peers · </Text>
-        <Text dimColor={!shared} color={shared ? 'yellow' : undefined}>
-          {parts.join(' · ')}
-        </Text>
+        <Button key="peers-band" plain onPress={() => void openPane($)}>
+          <Text dimColor>peers · </Text>
+          <Text dimColor={!shared} color={shared ? 'yellow' : undefined}>
+            {parts.join(' · ')}
+          </Text>
+        </Button>
       </Box>
     )
   })

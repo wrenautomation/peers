@@ -4,8 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Peers live</title>
-<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/diff@5.2.0/dist/diff.min.js"></script>
 <style>
 :root {
   --bg: #fbfaf8; --panel: #ffffff; --ink: #1d1d1f; --mute: #6e6e73; --line: #e6e3de; --code: #f4f2ee;
@@ -79,12 +77,12 @@ aside h1 { font-size: 15px; margin: 0 0 14px; display: flex; align-items: center
   <aside id="side"></aside>
   <main id="main"></main>
 </div>
-<script>
+<script type="module">
+import { marked } from '/vendor/marked.mjs'
 const S = { state: null, focus: null, mode: null, only: null, docs: new Map(), open: new Set(), live: false }
 const color = new Map()
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 const ago = t => { const s = Math.max(1, Math.round((Date.now() - t) / 1000)); return s < 60 ? `${s}s` : s < 3600 ? `${Math.round(s / 60)}m` : `${Math.round(s / 3600)}h` }
-const key = line => { const t = line.trimEnd(); return t.trim().length >= 4 && /[A-Za-z0-9]/.test(t) ? t.slice(0, 300) : null }
 const c = id => (id && color.has(id) ? `var(--a${color.get(id) % 8})` : 'var(--nobody)')
 const sessions = () => S.state.repos.flatMap(r => r.sessions)
 const nameOf = id => sessions().find(s => s.id === id)?.name ?? 'nobody'
@@ -138,54 +136,34 @@ function card(r, f, full) {
     ${cap && total > cap ? `<div class="more" data-open="${esc(id)}">${total - cap} more lines</div>` : ''}</section>`
 }
 
-// Markdown in suggestion style: added text marked, removed text struck, each in its author's color.
+// Markdown in suggestion style from the server's lines (lib/doc.mjs): added text marked,
+// removed text struck, each in its author's color. Blocks keep their Markdown; inline marks escape it.
 function docHtml(d) {
-  const by = (side, line) => d.authors[side][key(line)] ?? null
-  const prefix = line => /^(\s*(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?|\s*#{1,6}\s+|\s*>\s*)?/.exec(line)[0]
   const out = []
-  let fence = false
-  const push = l => { if (/^\s*(```|~~~)/.test(l)) fence = !fence; out.push(l) }
-  const block = (cls, col, ls) => { out.push('', `<div class="${cls}" style="--c:${col}">`, '', ...ls, '', '</div>', '') }
-  const split = t => t.replace(/\n$/, '').split('\n')
-  const parts = Diff.diffLines(d.old, d.new)
-  for (let i = 0; i < parts.length; i++) {
-    const p = parts[i]
-    if (!p.added && !p.removed) { split(p.value).forEach(push); continue }
-    const next = parts[i + 1]
-    if (p.removed && next?.added) {
-      const a = split(p.value), b = split(next.value)
-      i++
-      if (fence) { b.forEach(push); continue }
-      // Line pairs get a word diff; the rest of a list stays in the list, other leftovers go in a block.
-      const n = Math.min(a.length, b.length)
-      const item = l => /^\s*([-*+]|\d+[.)])\s/.test(l)
-      if (a.length === b.length || (a.slice(n).every(item) && b.slice(n).every(item))) {
-        for (let j = 0; j < n; j++) {
-          const pre = prefix(b[j]), col = c(by('added', b[j]) ?? by('removed', a[j]))
-          const w = Diff.diffWordsWithSpace(a[j].slice(prefix(a[j]).length), b[j].slice(pre.length))
-          push(pre + w.map(x => x.added ? `<mark style="--c:${col}">${esc(x.value)}</mark>` : x.removed ? `<del style="--c:${col}">${esc(x.value)}</del>` : esc(x.value)).join(''))
-        }
-        for (const l of b.slice(n)) push(`${prefix(l)}<mark style="--c:${c(by('added', l))}">${esc(l.slice(prefix(l).length))}</mark>`)
-        for (const l of a.slice(n)) push(`${prefix(l)}<del style="--c:${c(by('removed', l))}">${esc(l.slice(prefix(l).length))}</del>`)
-        continue
-      }
-      block('dels', c(by('removed', a.find(key) ?? '')), a.map(esc))
-      block('ins', c(by('added', b.find(key) ?? '')), b)
+  const ls = d.lines
+  for (let i = 0; i < ls.length; i++) {
+    const x = ls[i]
+    if (x.fence) { if (x.k !== '-') out.push(x.s); continue }
+    if (x.k === '=') { out.push(x.s); continue }
+    if (x.g) {
+      let j = i
+      while (j + 1 < ls.length && ls[j + 1].g === x.g) j++
+      const group = ls.slice(i, j + 1)
+      const col = c(group.find(y => y.a)?.a)
+      out.push('', `<div class="${x.k === '+' ? 'ins' : 'dels'}" style="--c:${col}">`, '', ...group.map(y => (x.k === '+' ? y.s : esc(y.s))), '', '</div>', '')
+      i = j
       continue
     }
-    const ls = split(p.value)
-    if (fence) { if (p.added) ls.forEach(push); continue }
-    if (p.removed) { block('dels', c(by('removed', ls.find(key) ?? '')), ls.map(esc)); continue }
-    if (ls.length === 1 && ls[0].trim()) {
-      const pre = prefix(ls[0])
-      push(`${pre}<mark style="--c:${c(by('added', ls[0]))}">${esc(ls[0].slice(pre.length))}</mark>`)
-    } else block('ins', c(by('added', ls.find(key) ?? '')), ls)
+    const col = c(x.a)
+    const tag = (t, v) => (t === '+' ? `<mark style="--c:${col}">${esc(v)}</mark>` : t === '-' ? `<del style="--c:${col}">${esc(v)}</del>` : esc(v))
+    if (x.k === '~') out.push(x.pre + x.runs.map(r => tag(r.t, r.s)).join(''))
+    else out.push(x.pre + tag(x.k, x.s.slice(x.pre.length)))
   }
   return marked.parse(out.join('\n'))
 }
 
 async function loadDoc(root, rel) {
-  const r = await fetch(`/api/file?root=${encodeURIComponent(root)}&rel=${encodeURIComponent(rel)}`)
+  const r = await fetch(`/api/doc?root=${encodeURIComponent(root)}&rel=${encodeURIComponent(rel)}`)
   if (r.ok) S.docs.set(`${root}\0${rel}`, await r.json())
 }
 
@@ -204,7 +182,7 @@ function main() {
     else if (mode === 'diff') h += card(r, f, true)
     else {
       const d = S.docs.get(`${r.root}\0${f.rel}`)
-      h += d ? `<article class="doc">${isDoc(f.rel) ? docHtml(d) : `<pre>${esc(d.new)}</pre>`}</article>` : '<div class="empty">Loading…</div>'
+      h += d ? `<article class="doc">${isDoc(f.rel) ? docHtml(d) : `<pre>${esc(d.text)}</pre>`}</article>` : '<div class="empty">Loading…</div>'
     }
     el.innerHTML = h
     return

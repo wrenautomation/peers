@@ -58,7 +58,11 @@ peers ls                    # every live session in this repo
 peers view                  # live page of every session's edits
 ```
 
-`peers view` opens http://127.0.0.1:6421 (`PEERS_VIEW_PORT` to change). It shows the uncommitted edits in every repo with a live session, each line in its author's color; grey is a line no ledger holds. Markdown opens as a document in suggestion style: added words marked, removed words struck. Code opens as a diff. The page updates as files change. The server starts on the first call and stops 15 minutes after the last page closes. It answers on this Mac only.
+`peers view` opens http://127.0.0.1:6421 (`PEERS_VIEW_PORT` to change). It shows the uncommitted edits in every repo with a live session, each line in its author's color; grey is a line no ledger holds. Markdown opens as a document in suggestion style: added words marked, removed words struck. Code opens as a diff. The page updates as files change. The server starts on the first call and stops 15 minutes after the last page closes.
+
+`/peers-view` in Claude Code (`/peers` is a built-in name) opens the same view in a pane: files by repo, a number key opens one, `d` and `f` switch document and diff, `b` goes back. The band above the prompt opens it too. The pane reads the same server and starts it when it is down.
+
+`peers view --install --host peers.example.com` keeps the server up under launchd (log in `~/Library/Logs/peers-view.log`); `--uninstall` stops it. Run `--install` again after a plugin update. Point a Cloudflare tunnel with Access at 127.0.0.1:6421 for that host. Requests for the public host see only repos that are public on GitHub; any other host gets 403. This Mac sees all repos.
 
 Edit, then commit, in separate commands: the ledger records a Bash edit after that command ends, so `sed ... && peers commit` sees nothing to commit.
 
@@ -77,7 +81,7 @@ Each edit records the lines it added and removed (`lib/lines.mjs`). Only distinc
 - Binary files, new files, deleted files and files with no final newline commit whole. So does a file where a peer has no line data (a session still on an older mod).
 - A formatter on your own shared file still rewrites the peer's lines there. Those changes count as yours.
 - `peers commit` runs `post-commit` hooks but not `pre-commit` or `commit-msg`.
-- `peers view` colors a line by its text. A line the ledger does not hold (too short, or written by a non-Claude edit) shows grey. Libraries load from jsdelivr, so the page needs the network.
+- `peers view` colors a line by its text. A line the ledger does not hold (too short, or written by a non-Claude edit) shows grey.
 - A Bash command sees every file that changed while it ran. Lines a peer recorded in that time stay theirs (0.3.2). A peer's own Bash edit records only when its command ends, so two long commands that edit the same file can still cross.
 
 ## License
