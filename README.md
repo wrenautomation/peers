@@ -74,6 +74,7 @@ Each edit records the lines it added and removed (`lib/lines.mjs`). Only distinc
 - Binary files, new files, deleted files and files with no final newline commit whole. So does a file where a peer has no line data (a session still on an older mod).
 - A formatter on your own shared file still rewrites the peer's lines there. Those changes count as yours.
 - `mine commit` runs `post-commit` hooks but not `pre-commit` or `commit-msg`.
+- A Bash command sees every file that changed while it ran. Lines a peer recorded in that time stay theirs (0.3.2). A peer's own Bash edit records only when its command ends, so two long commands that edit the same file can still cross.
 
 ## License
 

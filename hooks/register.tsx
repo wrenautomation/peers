@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 import type { Peer } from '../types'
 import { HINT, scan } from '../lib/guard.mjs'
-import { delta, merge } from '../lib/lines.mjs'
+import { delta, merge, unclaimed } from '../lib/lines.mjs'
 
 // One checkout, many sessions. Every session keeps its own ledger file:
 //   ~/.claude/peers/<encodeURIComponent(repo root)>/<session id>.json
@@ -396,13 +396,14 @@ export const register: Register = on => {
       }
     }
 
+    const t0 = await $.clock.now()
     const r: any = await next(e)
     if (!r || r.deny !== undefined || r.isReadOnly) return r
 
     const hitPeers: string[] = []
     for (const [root, was] of before) {
       const now = await dirty($, root)
-      const touched: string[] = []
+      let touched: string[] = []
       for (const [rel, mtime] of now) {
         const old = was.get(rel)
         if (old === undefined || old !== mtime) touched.push(rel)
@@ -418,6 +419,16 @@ export const register: Register = on => {
         const cur = now.has(rel) ? ((await readText($, abs)) ?? '') : await headText($, root, rel)
         if (old !== null) deltas.set(rel, delta(old, cur))
       }
+      // A long command (tests, a push) runs while peers edit: a file a peer recorded since it
+      // started keeps only the lines that are not the peer's, and is not ours if none are left.
+      const during = (await peersOf($, root)).filter(p => p.updated >= t0)
+      touched = touched.filter(rel => {
+        if (!during.length) return true
+        const kept = unclaimed(deltas.get(rel), during, rel, t0)
+        if (kept && deltas.has(rel)) deltas.set(rel, kept)
+        return kept !== null
+      })
+      if (!touched.length) continue
       await record($, root, touched, deltas)
       const theirs = new Set(touched)
       for (const { rel, peer } of peerDirty.get(root) ?? []) if (theirs.has(rel)) hitPeers.push(`${rel} (${nameOf(peer)})`)
