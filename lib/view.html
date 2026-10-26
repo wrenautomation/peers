@@ -251,13 +251,13 @@ const firstLine = h => { let n = h.new; for (const x of h.lines) { if (x.t !== '
 function legend() {
   const ss = sessions().sort((a, b) => b.updated - a.updated)
   const files = id => S.state.repos.reduce((n, r) => n + r.files.filter(f => f.authors.includes(id)).length, 0)
-  document.getElementById('legend').innerHTML = `<div class="label">Sessions</div>` + (ss.map(s => `
+  morph(document.getElementById('legend'), `<div class="label">Sessions</div>` + (ss.map(s => `
     <div class="who ${S.only === s.id ? 'on' : S.only ? 'off' : ''}" data-only="${s.id}" style="--c:${c(s.id)}" title="Click to show only ${esc(s.name)}">
       <span class="dot ${writing(s) ? 'now' : ''}"></span>
       <span><b>${esc(s.name)}</b>${s.title ? ` <span class="mute">${esc(s.title)}</span>` : ''}</span>
       <span class="meta">${files(s.id)} · ${ago(s.updated)}</span>
       ${s.doing ? `<span class="doing">${esc(s.doing)}</span>` : ''}
-    </div>`).join('') || '<div class="faint" style="padding:6px 8px">No live sessions.</div>')
+    </div>`).join('') || '<div class="faint" style="padding:6px 8px">No live sessions.</div>'))
 }
 
 function diffLines(f, h, cap, root) {
@@ -441,6 +441,8 @@ function focusView() {
     <span class="crumb">${esc(r?.name ?? '')} / ${esc(rel.split('/').slice(0, -1).join('/'))}${rel.includes('/') ? '/' : ''}<b>${esc(rel.split('/').pop())}</b></span>
     ${f ? `<span class="dots">${f.authors.map(a => `<i style="--c:${c(a)}" title="${esc(nameOf(a))}"></i>`).join('')}</span>${num(f.hunks.reduce((n, h) => n + h.lines.filter(x => x.t === '+').length, 0), f.hunks.reduce((n, h) => n + h.lines.filter(x => x.t === '-').length, 0))}` : '<span class="faint">no uncommitted change</span>'}</div>`
   if (mode === 'diff' && f) return out + (f.hunks.length ? f.hunks.map(h => hunkHtml(r, f, h)).join('') : '<div class="empty">No text diff.</div>')
+  // The repo's last session ended while the file was open.
+  if (!r) return out + '<div class="empty">This repo has no live session now.</div>'
   const d = S.docs.get(`${S.focus.root}\0${rel}`)
   if (!d) return out + '<div class="empty">Loading…</div>'
   if (d.missing) return out + '<div class="empty">This file is not in a shown repo now.</div>'
@@ -449,11 +451,11 @@ function focusView() {
 
 function feed() {
   const rows = S.state.repos.flatMap(r => r.feed.map(e => ({ ...e, root: r.root, repo: r.name }))).sort((a, b) => b.at - a.at).slice(0, 80)
-  document.getElementById('feed').innerHTML = rows.map(e => `
+  morph(document.getElementById('feed'), rows.map(e => `
     <div class="ev ${S.only && e.a !== S.only ? 'off' : ''} ${Date.now() - e.at < 15000 ? 'fresh' : ''}" style="--c:${c(e.a)}" data-root="${esc(e.root)}" data-rel="${esc(e.rels[0] ?? '')}">
       <span class="dot"></span><span class="t ${e.t ? '' : 'mute'}">${e.kind === 'commit' ? `<i class="bi bi-check2-circle faint"></i> <span class="mono faint">${esc(e.sha)}</span> ${esc(e.t)}` : esc(e.t || 'Edited')}</span>
       <span class="w">${esc(nameOf(e.a))} · ${ago(e.at)} · ${e.rels.slice(0, 3).map(x => esc(x.split('/').pop())).join(', ')}${e.rels.length > 3 ? ` +${e.rels.length - 3}` : ''}</span>
-    </div>`).join('') || '<div class="faint">No activity yet.</div>'
+    </div>`).join('') || '<div class="faint">No activity yet.</div>')
 }
 
 const morph = (el, html) => Idiomorph.morph(el, html, { morphStyle: 'innerHTML' })
