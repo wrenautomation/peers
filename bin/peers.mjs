@@ -1,22 +1,22 @@
 #!/usr/bin/env node
-// mine: git scoped to the files this Claude Code session touched.
+// peers: git scoped to the files this Claude Code session touched.
 // Ledger: ~/.claude/peers/<encodeURIComponent(repo root)>/<session>.json, written by the peers mod.
 import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
-import { applyHunks, keys, owner, parseDiff } from '../lib/lines.mjs'
+import { applyHunks, keys, owner, parseDiff, statusPaths } from '../lib/lines.mjs'
 
 const argv = process.argv.slice(2)
 const cmd = argv[0]
-const usage = `mine status | diff | commit -m "msg" [--whole] | check | ls | ready | claim <task> | close [-r reason] | files
+const usage = `peers status | diff | commit -m "msg" [--whole] | check | ls | ready | claim <task> | close [-r reason] | files
 Scope: the files this session edited (ledger kept by the peers mod). In a file a peer also edits, only your hunks
 (--whole takes the file as it is). Tasks: Backlog.md (\`backlog\` on PATH, board at BACKLOG_CWD).
 Env: PEERS_SESSION overrides the session id.`
 
 const session = process.env.PEERS_SESSION || process.env.CLAUDE_CODE_SESSION_ID
 if (!cmd || cmd === '-h' || cmd === '--help') die(usage, 0)
-if (!session) die('mine: no session id. Run it from a Claude Code session, or set PEERS_SESSION.')
+if (!session) die('peers: no session id. Run it from a Claude Code session, or set PEERS_SESSION.')
 
 const root = git(['rev-parse', '--show-toplevel']).trim()
 // Ledger paths are relative to the root: run every git call from there.
@@ -62,8 +62,7 @@ function nameOf(l) {
   return l.ticket ?? `s-${l.session.slice(0, 4)}`
 }
 function dirtySet() {
-  const out = git(['status', '--porcelain', '-z', '--untracked-files=all'])
-  return new Set(out.split('\0').filter(r => r.length > 3).map(r => r.slice(3)))
+  return new Set(statusPaths(git(['status', '--porcelain', '-z', '--untracked-files=all'])))
 }
 function mineDirty(l) {
   const d = dirtySet()
@@ -125,7 +124,7 @@ const l = load()
 
 switch (cmd) {
   case 'files': {
-    // Uncommitted only: the list to hand a formatter, `biome check --write $(mine files)`.
+    // Uncommitted only: the list to hand a formatter, `biome check --write $(peers files)`.
     for (const f of mineDirty(l)) console.log(f)
     break
   }
@@ -167,9 +166,9 @@ switch (cmd) {
   case 'commit': {
     const i = argv.indexOf('-m')
     const msg = i > 0 ? argv[i + 1] : null
-    if (!msg) die('mine commit -m "message" [--whole]')
+    if (!msg) die('peers commit -m "message" [--whole]')
     const mine = mineDirty(l)
-    if (!mine.length) die('nothing of yours to commit (edited in this same command? the ledger lands after it ends: run mine commit on its own)')
+    if (!mine.length) die('nothing of yours to commit (edited in this same command? the ledger lands after it ends: run peers commit on its own)')
     const body = [msg, '', ...(l.ticket ? [`Ticket: ${l.ticket}`] : []), 'Co-Authored-By: Claude <noreply@anthropic.com>'].join('\n')
     // A private index built from HEAD: a peer's staged files never ride along, and the
     // update-ref below lands only if HEAD did not move under us.
@@ -238,7 +237,7 @@ switch (cmd) {
   }
   case 'check': {
     const last = l.commits.at(-1)
-    if (!last) die('no commit of yours yet: mine commit first')
+    if (!last) die('no commit of yours yet: peers commit first')
     const wt = join(homedir(), 'worktrees', `${basename(root)}-check`)
     if (!existsSync(wt)) {
       mkdirSync(join(homedir(), 'worktrees'), { recursive: true })
@@ -268,20 +267,20 @@ switch (cmd) {
     break
   }
   case 'ready': {
-    if (!hasBoard()) die('mine ready: backlog not on PATH (npm i -g backlog.md)')
+    if (!hasBoard()) die('peers ready: backlog not on PATH (npm i -g backlog.md)')
     process.exit(board(['task', 'list', '-s', 'To Do', '--plain'], false) ? 0 : 1)
   }
   case 'claim': {
     const id = argv[1]
-    if (!id) die('mine claim <task>')
-    if (hasBoard() && !board(['task', 'edit', id, '-s', 'In Progress'])) die(`mine claim: no task ${id}`)
+    if (!id) die('peers claim <task>')
+    if (hasBoard() && !board(['task', 'edit', id, '-s', 'In Progress'])) die(`peers claim: no task ${id}`)
     l.ticket = id
     save(l)
     console.log(`claimed ${id}`)
     break
   }
   case 'close': {
-    if (!l.ticket) die('no ticket bound: mine claim <ticket> first')
+    if (!l.ticket) die('no ticket bound: peers claim <ticket> first')
     const i = argv.indexOf('-r')
     const last = l.commits.at(-1)
     const reason = (i > 0 ? argv[i + 1] : 'done') + (last ? ` (${last.sha.slice(0, 7)})` : '')

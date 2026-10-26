@@ -2,11 +2,11 @@ import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 import type { Peer } from '../types'
 import { HINT, scan } from '../lib/guard.mjs'
-import { delta, merge, unclaimed } from '../lib/lines.mjs'
+import { delta, merge, statusPaths, unclaimed } from '../lib/lines.mjs'
 
 // One checkout, many sessions. Every session keeps its own ledger file:
 //   ~/.claude/peers/<encodeURIComponent(repo root)>/<session id>.json
-// The mod writes it from tool calls. `mine` (bin/mine.mjs) reads it for
+// The mod writes it from tool calls. `peers` (bin/peers.mjs) reads it for
 // status, diff, commit, check, claim and close. Nothing here spends a model
 // token unless a peer touched the exact file the model is about to use.
 
@@ -235,9 +235,7 @@ const dirty = async ($: any, root: string): Promise<Map<string, number>> => {
       timeoutMs: 10000,
     })
     if (r.exitCode !== 0) return m
-    for (const row of r.stdout.split('\0')) {
-      if (row.length < 4) continue
-      const rel = row.slice(3)
+    for (const rel of statusPaths(r.stdout)) {
       const abs = `${root}/${rel}`
       let mtime = 0
       try {
@@ -263,10 +261,10 @@ export const register: Register = on => {
       const l = await loadMine($, cwdRoot)
       await saveMine($, l)
     }
-    // `mine` on PATH: the one install step beyond /plugin install.
+    // `peers` on PATH: the one install step beyond /plugin install.
     try {
       await $.process.run(['mkdir', '-p', `${home}/.local/bin`], { timeoutMs: 5000 })
-      await $.process.run(['ln', '-sfn', `${$.plugin.root}/bin/mine.mjs`, `${home}/.local/bin/mine`], { timeoutMs: 5000 })
+      await $.process.run(['ln', '-sfn', `${$.plugin.root}/bin/peers.mjs`, `${home}/.local/bin/peers`], { timeoutMs: 5000 })
     } catch {}
     $.clock.every(3000, () => refreshPeers($))
     return next(e)
@@ -293,7 +291,7 @@ export const register: Register = on => {
           scope: 'session' as const,
           text:
             'Peers: other Claude sessions edit this same checkout. Changes in files you did not touch are theirs: never mention, revert, stage or commit them. ' +
-            'Your files: `mine status`, `mine diff`, `mine commit -m "..."`, `mine check`. Next task: `mine ready`. Bind one with `mine claim <id>`; `mine close -r "..."` closes it. Do not edit task status by hand.',
+            'Your files: `peers status`, `peers diff`, `peers commit -m "..."`, `peers check`. Next task: `peers ready`. Bind one with `peers claim <id>`; `peers close -r "..."` closes it. Do not edit task status by hand.',
         },
       ],
     }
@@ -433,7 +431,7 @@ export const register: Register = on => {
       const theirs = new Set(touched)
       for (const { rel, peer } of peerDirty.get(root) ?? []) if (theirs.has(rel)) hitPeers.push(`${rel} (${nameOf(peer)})`)
     }
-    // `mine claim` and `mine close` change the ticket in the ledger; refresh the band.
+    // `peers claim` and `peers close` change the ticket in the ledger; refresh the band.
     if (/\bmine (claim|close)\b/.test(cmd)) await refreshPeers($)
     const warn = hitPeers.length
       ? `peers: this command changed uncommitted peer files: ${[...new Set(hitPeers)].join(', ')}. Check them with git diff and put back any of their lines it broke.`
