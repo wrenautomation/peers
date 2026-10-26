@@ -63,7 +63,7 @@ function peers() {
         return null
       }
     })
-    .filter(l => l && !l.ended && now - l.updated < 12 * 3600 * 1000)
+    .filter(l => l && !(l.ended && l.updated - l.ended < 5000) && now - l.updated < 12 * 3600 * 1000)
 }
 function nameOf(l) {
   return l.ticket ?? `s-${l.session.slice(0, 4)}`

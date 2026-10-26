@@ -172,7 +172,7 @@ const peersOf = async ($: any, root: string): Promise<Ledger[]> => {
   for (const e of entries) {
     if (e.kind !== 'file' || !e.name.endsWith('.json') || e.name === `${session}.json`) continue
     const l = await readJson($, `${ledgerDir(root)}/${e.name}`)
-    if (!l || l.ended || now - l.updated > LIVE_MS) continue
+    if (!l || (l.ended && l.updated - l.ended < 5000) || now - l.updated > LIVE_MS) continue
     out.push(l)
   }
   return out
