@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { Register, RenderChildren } from 'claude-code'
+import type { Register, RenderChildren, RenderElement } from 'claude-code'
 import type { Peer, ViewBody, ViewFile, ViewFocus, ViewFold, ViewIndex, ViewLine, ViewRepo, ViewSession } from '../types'
 import { HINT, scan } from '../lib/guard.mjs'
 import { delta, merge, statusPaths, unclaimed, yields } from '../lib/lines.mjs'
@@ -40,6 +40,19 @@ const ABS_PATH = /(?:^|[\s='"])(\/[^\s'"`;|&>]+)/g
 const peersAtom = atom({ plugin: 'peers', key: 'peers' } as const, [] as Peer[])
 // The band: one compact line, or with [+] a row per peer.
 const wideAtom = atom({ plugin: 'peers', key: 'wide' } as const, false)
+// The element each site's focus ring is on, by requestId.
+const ringAtom = atom({ plugin: 'peers', key: 'ring' } as const, {} as Record<string, string>)
+
+// The engine's focus inverts a Button; mixed and dim colors invert to a gray bar.
+// One theme blue under the ring inverts to a blue bar, as Claude Code's own.
+const lit = (n: RenderChildren): RenderChildren => {
+  if (Array.isArray(n)) return n.map(lit)
+  if (!n || typeof n !== 'object' || (n as RenderElement).type !== 'Text') return n
+  const el = n as any
+  const { backgroundColor: _, dimColor: __, ...props } = el.props ?? {}
+  return { ...el, props: { ...props, color: 'suggestion' }, children: lit(el.children) }
+}
+const ringed = (Text: any, on: boolean, children: RenderChildren) => (on ? <Text color="suggestion">{lit(children)}</Text> : children)
 
 const nameOf = (l: { session: string; ticket?: string }) => l.ticket ?? `s-${l.session.slice(0, 4)}`
 
@@ -415,12 +428,21 @@ export const register: Register = on => {
     return next(e)
   })
 
+  // Keep where each of our sites' focus ring is, so the drawing can light that row.
+  on('ui.focus', async ($, e, next) => {
+    const r = await next(e)
+    if (!r.deny && (e.component === 'AbovePrompt' || e.requestId === PANE))
+      await update($, ringAtom, m => ({ ...m, [e.requestId]: e.element ?? '' }))
+    return r
+  })
+
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text, Button, Code } = $.ui.resolve(e)
     const ix = await read($, indexAtom)
     const focus = await read($, focusAtom)
     const now = await $.clock.now()
     const fold = await read($, foldAtom)
+    const ring = e.props.isFocused ? (await read($, ringAtom))[PANE] : undefined
     // One color per session by start order, the same rule as the page: a session keeps its color in both.
     const byId = new Map<string, ViewSession>()
     const named = new Map<string, ViewSession>()
@@ -477,10 +499,12 @@ export const register: Register = on => {
           const open = isOpen(id, 2)
           out.push(
             <Button key={id} plain onPress={flip(id)}>
-              <Text dimColor>{open ? '▾ ' : '▸ '}</Text>
-              <Text color={col(a)}>● </Text>
-              <Text bold>{a ? nameOf(a) : 'Unattributed'}</Text>
-              <Text dimColor>{` ${files.length} file${files.length === 1 ? '' : 's'}${num(adds, dels)}`}</Text>
+              {ringed(Text, ring === id, [
+                <Text dimColor>{open ? '▾ ' : '▸ '}</Text>,
+                <Text color={col(a)}>● </Text>,
+                <Text bold>{a ? nameOf(a) : 'Unattributed'}</Text>,
+                <Text dimColor>{` ${files.length} file${files.length === 1 ? '' : 's'}${num(adds, dels)}`}</Text>,
+              ])}
             </Button>,
           )
           if (!open) continue
@@ -490,14 +514,14 @@ export const register: Register = on => {
             const kind = f.kind ?? (f.isNew ? 'add' : 'edit')
             out.push(
               <Button key={`f:${a}:${r.root}/${f.rel}`} plain onPress={show({ root: r.root, rel: f.rel, mode: isDoc(f.rel) ? 'doc' : 'diff' })}>
-                {' '.repeat(Math.max(0, 3 - dots(f).length))}
-                {dots(f).map(x => (
-                  <Text color={col(x)}>●</Text>
-                ))}
-                {kindMark(kind, col(a))}
-                <Text strikethrough={kind === 'delete'} dimColor={kind === 'delete'}>{f.rel}</Text>
-                <Text dimColor>{`${f.count ? ` ${f.count} new files` : ''}${num(cs.length ? cs.reduce((n, c) => n + c.adds, 0) : f.adds, cs.length ? cs.reduce((n, c) => n + c.dels, 0) : f.dels)} · ${ago(now - f.mtime)}`}</Text>
-                {fold.zoom < 3 && said.length ? <Text dimColor>{`  ${said.join(' · ')}`}</Text> : null}
+                {ringed(Text, ring === `f:${a}:${r.root}/${f.rel}`, [
+                  ' '.repeat(Math.max(0, 3 - dots(f).length)),
+                  ...dots(f).map(x => <Text color={col(x)}>●</Text>),
+                  kindMark(kind, col(a)),
+                  <Text strikethrough={kind === 'delete'} dimColor={kind === 'delete'}>{f.rel}</Text>,
+                  <Text dimColor>{`${f.count ? ` ${f.count} new files` : ''}${num(cs.length ? cs.reduce((n, c) => n + c.adds, 0) : f.adds, cs.length ? cs.reduce((n, c) => n + c.dels, 0) : f.dels)} · ${ago(now - f.mtime)}`}</Text>,
+                  fold.zoom < 3 && said.length ? <Text dimColor>{`  ${said.join(' · ')}`}</Text> : null,
+                ])}
               </Button>,
             )
             if (fold.zoom >= 3)
@@ -848,6 +872,7 @@ export const register: Register = on => {
     const ix = await read($, indexAtom)
     const col = colorRule(ix.repos.length ? ix.repos.flatMap(r => r.sessions) : [...mineStarted, ...peers.map(p => ({ id: p.session, started: p.started }))])
     const wide = await read($, wideAtom)
+    const ring = (await read($, ringAtom))[e.requestId]
     const flip = () => void update($, wideAtom, w => !w)
     const nums = (p: Peer) => (
       <Text>
@@ -864,14 +889,16 @@ export const register: Register = on => {
       return (
         <Box flexDirection="row">
           <Button key="peers-band" plain onPress={() => void openPane($)}>
-            <Text dimColor>peers</Text>
-            {peers.map(p => (
-              <Text key={p.name}>
-                <Text dimColor>{' · '}</Text>
-                <Text color={col(p.session)} bold>{p.name}</Text>
-                {nums(p)}
-              </Text>
-            ))}
+            {ringed(Text, ring === 'peers-band', [
+              <Text dimColor>peers</Text>,
+              ...peers.map(p => (
+                <Text key={p.name}>
+                  <Text dimColor>{' · '}</Text>
+                  <Text color={col(p.session)} bold>{p.name}</Text>
+                  {nums(p)}
+                </Text>
+              )),
+            ])}
           </Button>
           <Text> </Text>
           <Button key="peers-wide" plain dimColor onPress={flip}>[+]</Button>
@@ -882,7 +909,7 @@ export const register: Register = on => {
       <Box flexDirection="column">
         <Box flexDirection="row">
           <Button key="peers-band" plain onPress={() => void openPane($)}>
-            <Text dimColor>{`peers · ${peers.length} sessions · files|shared`}</Text>
+            {ringed(Text, ring === 'peers-band', <Text dimColor>{`peers · ${peers.length} sessions · files|shared`}</Text>)}
           </Button>
           <Text> </Text>
           <Button key="peers-wide" plain dimColor onPress={flip}>[−]</Button>

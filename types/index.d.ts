@@ -73,6 +73,6 @@ export type ViewFold = { zoom: 1 | 2 | 3; flip: string[] }
 
 declare module 'claude-code' {
   interface PluginState {
-    peers: { peers: Peer[]; index: Shaped<ViewIndex>; focus: Shaped<ViewFocus>; body: Shaped<ViewBody>; fold: Shaped<ViewFold>; wide: boolean }
+    peers: { peers: Peer[]; index: Shaped<ViewIndex>; focus: Shaped<ViewFocus>; body: Shaped<ViewBody>; fold: Shaped<ViewFold>; wide: boolean; ring: Record<string, string> }
   }
 }
