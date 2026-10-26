@@ -2,7 +2,7 @@
 // mine: git scoped to the files this Claude Code session touched.
 // Ledger: ~/.claude/peers/<encodeURIComponent(repo root)>/<session>.json, written by the peers mod.
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
 import { applyHunks, keys, owner, parseDiff } from '../lib/lines.mjs'
@@ -19,6 +19,8 @@ if (!cmd || cmd === '-h' || cmd === '--help') die(usage, 0)
 if (!session) die('mine: no session id. Run it from a Claude Code session, or set PEERS_SESSION.')
 
 const root = git(['rev-parse', '--show-toplevel']).trim()
+// Ledger paths are relative to the root: run every git call from there.
+process.chdir(root)
 const dir = join(homedir(), '.claude', 'peers', encodeURIComponent(root))
 const own = join(dir, `${session}.json`)
 
@@ -79,11 +81,13 @@ function board(args, quiet = true) {
 // Line sets of a file: mine, and every live peer's that has not committed it yet.
 function lineSets(f, live) {
   const mine = { added: new Set(l.files[f]?.added ?? []), removed: new Set(l.files[f]?.removed ?? []) }
-  const theirs = { added: new Set(), removed: new Set(), who: [] }
+  const theirs = { added: new Set(), removed: new Set(), who: [], blind: false }
   for (const p of live) {
     const e = p.files[f]
     if (!e || p.commits.some(c => c.at >= e.last && c.files.includes(f))) continue
     theirs.who.push(nameOf(p))
+    // A peer on an old mod, or whose edits held no distinctive line: nothing to split by.
+    if (!e.added?.length && !e.removed?.length) theirs.blind = true
     for (const k of e.added ?? []) theirs.added.add(k)
     for (const k of e.removed ?? []) theirs.removed.add(k)
   }
@@ -94,6 +98,7 @@ function lineSets(f, live) {
 function split(f, live) {
   const { mine, theirs } = lineSets(f, live)
   if (!theirs.who.length) return { whole: true }
+  if (theirs.blind) return { whole: true, who: theirs.who, blind: true }
   const d = parseDiff(git(['diff', '-U0', '--no-color', '--no-ext-diff', '--no-renames', 'HEAD', '--', f]))
   const cut = !d.binary && d.hunks.length && !d.hunks.some(h => h.noEol) && d.head.every(x => !/^(new|deleted) file/.test(x))
   if (!cut) return { whole: true, who: theirs.who, uncut: true }
@@ -170,6 +175,7 @@ switch (cmd) {
     // update-ref below lands only if HEAD did not move under us.
     const index = git(['rev-parse', '--path-format=absolute', '--git-path', `peers-${session}.index`]).trim()
     const env = { ...process.env, GIT_INDEX_FILE: index }
+    process.on('exit', () => rmSync(index, { force: true }))
     let sha
     let notes
     for (let attempt = 0; ; attempt++) {
@@ -184,7 +190,7 @@ switch (cmd) {
         if (s.whole) {
           whole.push(f)
           files.push(f)
-          if (s.who) notes.push(`${f}: whole file, it also carries uncommitted lines of ${s.who.join(', ')}${s.uncut ? ' (cannot split this file)' : ''}`)
+          if (s.who) notes.push(`${f}: whole file, it also carries uncommitted lines of ${s.who.join(', ')}${s.uncut ? ' (cannot split this file)' : s.blind ? ' (no line data for a peer)' : ''}`)
           continue
         }
         const take = [...s.mine, ...s.mixed]
@@ -212,9 +218,6 @@ switch (cmd) {
       l.commits.push({ sha, at: Date.now(), files })
       break
     }
-    try {
-      execFileSync('rm', ['-f', index])
-    } catch {}
     // Keep only lines that are still uncommitted: committed ones are no longer anyone's.
     for (const f of mine) {
       const e = l.files[f]

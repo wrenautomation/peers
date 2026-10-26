@@ -370,7 +370,7 @@ export const register: Register = on => {
     // Guard: staging, discards, branch switches and formatters that reach a peer's uncommitted files.
     const cwd = await $.session.cwd()
     for (const hit of scan(cmd)) {
-      const resolve = (p: string, from: string) => (p.startsWith('/') ? p : `${from}/${p}`).replace(/\/(\.\/?)?$/, '').replace(/\/\.\//g, '/')
+      const resolve = (p: string, from: string) => (p.startsWith('/') ? p : p === '~' || p.startsWith('~/') ? home + p.slice(1) : `${from}/${p}`).replace(/\/(\.\/?)?$/, '').replace(/\/\.\//g, '/')
       const base = resolve(hit.dir ?? '.', hit.cwd ? resolve(hit.cwd, cwd) : cwd)
       let targets: string[] | null = hit.targets
       // `git checkout X` with no `--`: a branch unless X is a path.
@@ -385,7 +385,8 @@ export const register: Register = on => {
       const blind = /[$`]|__q__/.test(`${hit.dir ?? ''}${hit.cwd ?? ''}`)
       if (blind) targets = null
       for (const [root, list] of peerDirty) {
-        if (hit.dir && !blind && !(base === root || base.startsWith(root + '/'))) continue
+        // Whole-tree ops reach the repo they run in (or every repo below it); named paths say where they land.
+        if (!blind && targets === null && !(base === root || base.startsWith(root + '/') || root.startsWith(base + '/'))) continue
         const rels = targets?.map(t => resolve(t, base)).map(a => (a === root ? '' : a.startsWith(root + '/') ? a.slice(root.length + 1) : null))
         const hits = list.filter(({ rel }) => !rels || rels.some(t => t !== null && (t === '' || rel === t || rel.startsWith(t + '/'))))
         if (hits.length) {
@@ -406,7 +407,8 @@ export const register: Register = on => {
         const old = was.get(rel)
         if (old === undefined || old !== mtime) touched.push(rel)
       }
-      for (const rel of was.keys()) if (!now.has(rel)) touched.push(rel) // deleted, or reverted to HEAD
+      // A file that left the dirty list was committed or reverted, not edited. A deleted
+      // tracked file stays dirty (mtime 0), so the loop above has it.
       if (!touched.length) continue
       const deltas = new Map<string, Delta>()
       for (const rel of touched) {

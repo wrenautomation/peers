@@ -71,7 +71,7 @@ Each edit records the lines it added and removed (`lib/lines.mjs`). Only distinc
 
 - Edits on adjacent lines make one hunk. `mine commit` takes it whole and says so.
 - A line both sessions added counts for neither.
-- Binary files, new files, deleted files and files with no final newline commit whole.
+- Binary files, new files, deleted files and files with no final newline commit whole. So does a file where a peer has no line data (a session still on an older mod).
 - A formatter on your own shared file still rewrites the peer's lines there. Those changes count as yours.
 - `mine commit` runs `post-commit` hooks but not `pre-commit` or `commit-msg`.
 
