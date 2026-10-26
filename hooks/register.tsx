@@ -98,6 +98,7 @@ const loadMine = async ($: any, root: string): Promise<Ledger> => {
 }
 
 const saveMine = async ($: any, l: Ledger) => {
+  delete l.ended
   l.updated = await $.clock.now()
   await $.fs.write(ownPath(l.root), JSON.stringify(l))
 }
@@ -327,6 +328,14 @@ export const register: Register = on => {
       const l = await loadMine($, cwdRoot)
       await saveMine($, l)
     }
+    // A reload runs session.end, then session.start: this session's ledgers are live again.
+    try {
+      for (const d of await $.fs.list(`${home}/.claude/peers`)) {
+        const path = `${home}/.claude/peers/${d.name}/${session}.json`
+        const l = await readJson($, path)
+        if (l?.ended) await saveMine($, l)
+      }
+    } catch {}
     // `peers` on PATH: the one install step beyond /plugin install.
     try {
       await $.process.run(['mkdir', '-p', `${home}/.local/bin`], { timeoutMs: 5000 })
