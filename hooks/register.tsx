@@ -824,7 +824,7 @@ export const register: Register = on => {
     // Each peer's name in its pane color; the page's sessions decide it once the pane has read them.
     const ix = await read($, indexAtom)
     const col = colorRule(ix.repos.length ? ix.repos.flatMap(r => r.sessions) : [...mineStarted, ...peers.map(p => ({ id: p.session, started: p.started }))])
-    // File count plain, + green, − red, shared purple, time dim.
+    // File count plain, +/− in the peer's color, shared purple, time dim.
     return (
       <Box>
         <Button key="peers-band" plain onPress={() => void openPane($)}>
@@ -834,8 +834,8 @@ export const register: Register = on => {
               <Text dimColor>{' · '}</Text>
               <Text color={col(p.session)}>{`● ${p.name}`}</Text>
               <Text>{` ${p.files} file${p.files === 1 ? '' : 's'}`}</Text>
-              {p.adds ? <Text color={KIND.add.color}>{` +${p.adds}`}</Text> : null}
-              {p.dels ? <Text color={KIND.delete.color}>{` −${p.dels}`}</Text> : null}
+              {p.adds ? <Text color={col(p.session)}>{` +${p.adds}`}</Text> : null}
+              {p.dels ? <Text color={col(p.session)}>{` −${p.dels}`}</Text> : null}
               {p.shared ? <Text color={SHARED}>{` (${p.shared} shared)`}</Text> : null}
               <Text dimColor>{` ${ago(now - p.last)}`}</Text>
             </Text>

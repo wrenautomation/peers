@@ -109,6 +109,7 @@ details[open] > summary .car { transform: rotate(90deg); }
 .grp > summary .doing { color: var(--mute); min-width: 0; flex: 1; }
 .num { font: 12px var(--mono); white-space: nowrap; }
 .num .ad { color: var(--add); } .num .de { color: var(--del); }
+.grp .num .ad, .grp .num .de { color: var(--c); }
 .files { padding-left: var(--step); }
 .file > summary { display: flex; gap: 8px; align-items: baseline; padding: 4px 8px 4px 0; border-radius: 6px; }
 /* The file caret sits in the session caret's column; the path on the session name's edge. */
@@ -135,7 +136,7 @@ details[open] > summary .car { transform: rotate(90deg); }
 .l .n { color: var(--faint); text-align: right; padding-right: 8px; user-select: none; font-size: 11px; }
 .l:is(.add, .del) .n { background: color-mix(in srgb, var(--c, var(--nobody)) 22%, transparent); color: var(--ink); }
 .l .s { color: var(--faint); text-align: center; user-select: none; }
-.l.add .s { color: var(--k-add); font-weight: 700; } .l.del .s { color: var(--k-delete); font-weight: 700; }
+.l.add .s, .l.del .s { color: var(--c); font-weight: 700; }
 .l.add { background: color-mix(in srgb, var(--c, var(--nobody)) var(--tint), transparent); }
 .l.del { background: color-mix(in srgb, var(--del) 6%, transparent); }
 .l.del code { color: var(--mute); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--c, var(--nobody)) 70%, transparent); }
