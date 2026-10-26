@@ -484,8 +484,8 @@ export const register: Register = on => {
     for (const root of roots) {
       const l = await readJson($, ownPath(root))
       if (l) {
-        l.ended = await $.clock.now()
-        await saveMine($, l)
+        l.ended = l.updated = await $.clock.now()
+        await $.fs.write(ownPath(root), JSON.stringify(l)) // not saveMine: it clears ended
       }
     }
     return next(e)
