@@ -294,10 +294,13 @@ const sessions = () => {
   const named = new Map()
   for (const r of S.state.repos) for (const s of r.sessions) {
     if (!m.has(s.id) || m.get(s.id).updated < s.updated) m.set(s.id, s)
-    if (s.title) named.set(s.id, s)
+    if (s.ticket) named.set(s.id, s)
   }
-  // A session claims its task in one repo: that name holds in every repo.
-  return [...m.values()].map(s => (named.has(s.id) ? { ...s, name: named.get(s.id).name, title: named.get(s.id).title } : s))
+  // A session claims its task in one repo: that task holds in every repo. Its name: the one the person gave it, else its id.
+  return [...m.values()].map(s => {
+    const t = named.get(s.id)
+    return { ...s, ...(t ? { ticket: t.ticket, title: t.title } : {}), name: s.label ?? s.name }
+  })
 }
 // Rank by a session's earliest start over its repos: the pane uses the same rule.
 const rank = () => {

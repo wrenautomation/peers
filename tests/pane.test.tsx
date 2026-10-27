@@ -11,7 +11,7 @@ const INDEX = {
       root: '/r/lab',
       name: 'lab',
       sessions: [
-        { id: S1, name: 'WA-901', ticket: 'WA-901', title: 'launch plan', doing: 'Move the launch to Monday', started: 1, updated: 60_000, commits: [] },
+        { id: S1, name: 'cc-aaaa', label: 'launch', ticket: 'WA-901', title: 'launch plan', doing: 'Move the launch to Monday', started: 1, updated: 60_000, commits: [] },
         { id: S2, name: 'cc-bbbb', ticket: null, title: 'Fix the login page so the code field takes a paste and the form keeps what was typed after a reload', doing: null, started: 2, updated: 1, commits: [] },
         { id: S3, name: 'cc-cccc', ticket: null, title: null, doing: null, started: 3, updated: 2, commits: [{ sha: 'abcdef1234567', at: 5_000, files: 13, t: 'Add the comment flow' }] },
       ],
@@ -88,28 +88,33 @@ test('the pane lists files and opens one as a document and a diff', async ($, on
 
   for (const surface of ['terminal', 'mobile'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
-    expect((await ui.find({ type: 'Text', text: /launch plan/ }))?.text).toContain('WA-901')
-    // Sessions open: the file under each session that owns a change in it, with the said title.
+    // One row per session: the name it was given, its id, its task, its title.
+    const top = (await ui.find({ key: `row:s:${S1}` }))?.text ?? ''
+    for (const t of ['launch', 'cc-aaaa', 'WA-901', 'launch plan']) expect(top).toContain(t)
+    // Sessions open: the file under each session that owns a change in it, as repo/path, with the said title.
     expect(await ui.find({ key: `f:${S2}:/r/lab/plan.md` })).toBeDefined()
+    expect((await ui.find({ key: `row:f:${S1}:/r/lab/plan.md` }))?.text).toContain('lab/plan.md')
     expect((await ui.find({ key: `row:f:${S1}:/r/lab/plan.md` }))?.text).toContain('Move the launch to Monday')
-    // The repo reads as a folder.
-    expect(await ui.find({ type: 'Text', text: 'lab/' })).toBeDefined()
+    // Two sessions changed plan.md: it shows under Shared with both names.
+    const shared = (await ui.find({ key: 'row:x:/r/lab/plan.md' }))?.text ?? ''
+    expect(shared).toContain('launch')
+    expect(shared).toContain('cc-bbbb')
     // Authors by name in their color, no dots; the fold arrow is the bold full triangle.
-    const group = JSON.stringify(await ui.find({ key: `row:s:/r/lab:${S1}` }))
+    const group = JSON.stringify(await ui.find({ key: `row:s:${S1}` }))
     expect(group).toContain('▼')
     expect(group).not.toContain('●')
     expect((await ui.find({ key: `row:f:${S1}:/r/lab/plan.md` }))?.text).toContain('cc-bbbb')
   // A session's row shows what it is on, cut to 2 rows of the pane's body.
-  const row = (await ui.find({ type: 'Text', text: /Fix the login page/ }))?.text ?? ''
+  const row = (await ui.find({ key: `row:s:${S2}` }))?.text ?? ''
   expect(row).toContain('cc-bbbb')
   expect(row).toContain('Fix the login page')
     // All its work committed: the session still shows, with its commit.
-    expect((await ui.find({ key: `row:s:/r/lab:${S3}` }))?.text).toContain('nothing open')
+    expect((await ui.find({ key: `row:s:${S3}` }))?.text).toContain('nothing open')
     expect((await ui.find({ type: 'Text', text: /Add the comment flow/ }))?.text).toContain('abcdef12  Add the comment flow  13 files')
     // A press on a session's name folds its files away; a second press opens them.
-    await ui.press({ key: `s:/r/lab:${S1}` })
+    await ui.press({ key: `s:${S1}` })
     expect(await ui.find({ key: `f:${S1}:/r/lab/plan.md` })).toBeUndefined()
-    await ui.press({ key: `s:/r/lab:${S1}` })
+    await ui.press({ key: `s:${S1}` })
     // ? shows the keys; a second ? closes them.
     await ui.press({ key: 'help' })
     expect(await ui.find({ type: 'Text', text: /open a file, or fold a session/ })).toBeDefined()
@@ -122,7 +127,7 @@ test('the pane lists files and opens one as a document and a diff', async ($, on
     expect(code?.props?.format).toBe('diff')
     expect(code?.props?.source).toBe('@@ -1,1 +1,1 @@\n-We ship on Friday.\n+We ship on Monday.')
     await ui.press({ key: 'back' })
-    expect(await ui.find({ type: 'Text', text: /launch plan/ })).toBeDefined()
+    expect(await ui.find({ key: `row:s:${S1}` })).toBeDefined()
     await ui.unmount()
   }
 })
@@ -154,7 +159,7 @@ test('the turn.step hook passes every chunk on unchanged', async ($, on) => {
 test('the band shows one line, and [+] opens a row per peer', async ($, on) => {
   mock.clock(on, { now: 65_000 })
   // A peer the ledgers gave: the band reads it from state.
-  const PEERS = [{ session: S1, name: 'WA-901', files: 3, shared: 1, last: 5_000, adds: 4, dels: 2, doing: 'Move the launch to Monday', sharedFiles: ['plan.md'] }]
+  const PEERS = [{ session: S1, name: 'launch', ticket: 'WA-901', files: 3, shared: 1, last: 5_000, adds: 4, dels: 2, doing: 'Move the launch to Monday', sharedFiles: ['plan.md'] }]
   on('ui.focus', () => ({}))
   on('http.fetch', () => ({ value: { status: 200, ok: true, headers: {}, text: JSON.stringify(INDEX) } }))
   const opens: any[] = []
@@ -171,8 +176,9 @@ test('the band shows one line, and [+] opens a row per peer', async ($, on) => {
     props: { hasSurvey: false, isWorking: false, maxRows: 20, bodyColumns: 120, scroll: { offset: 0, bodyRows: 20 }, view: {} },
   } as any)
   // Only the name is the Button, so the pointer lights the name alone.
-  expect((await ui.find({ key: `peer:${S1}` }))?.text).toBe('WA-901')
-  expect((await ui.find({ key: `c:${S1}` }))?.text).toContain('WA-901 3|1 +4 −2')
+  // The name it was given, then its task.
+  expect((await ui.find({ key: `peer:${S1}` }))?.text).toBe('launch WA-901')
+  expect((await ui.find({ key: `c:${S1}` }))?.text).toContain('launch WA-901 3|1 +4 −2')
   // Peers wrap by whole peer left of [+]; [+] is the last child, flush right beside the engine's [-].
   const band: any = await ui.find({ type: 'Box' })
   expect(band).toMatchObject({ props: { width: '100%', paddingLeft: 1 } })
@@ -189,7 +195,7 @@ test('the band shows one line, and [+] opens a row per peer', async ($, on) => {
   await ui.press({ key: `peer:${S1}` })
   expect(opens[0]).toMatchObject({ id: 'peers', focus: true })
   await ui.press({ key: 'peers-wide' })
-  expect((await ui.find({ key: `w:${S1}` }))?.text).toContain('WA-901 3|1 +4 −2 1m  Move the launch to Monday')
+  expect((await ui.find({ key: `w:${S1}` }))?.text).toContain('launch WA-901 3|1 +4 −2 1m  Move the launch to Monday')
   expect((await ui.find({ type: 'Text', text: /shared: plan.md/ }))).toBeDefined()
   await ui.press({ key: 'peers-wide' })
   expect((await ui.find({ type: 'Text', text: /shared: plan.md/ }))).toBeUndefined()

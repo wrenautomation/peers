@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { Register, RenderChildren, RenderElement } from 'claude-code'
 import type { Peer, Row, Span, ViewBody, ViewFocus, ViewFold, ViewIndex } from '../types'
-import { core, dirOf, holds, nameOf, peerLinesLost, quote, uncommitted } from '../lib/core.mjs'
+import { core, dirOf, holds, idOf, nameOf, peerLinesLost, quote, uncommitted } from '../lib/core.mjs'
 import { delta } from '../lib/lines.mjs'
 import { ADD, DEL, HELP, ago, cast, fit, colorRule, docRow, fileHead, gapText, gaps, helpRows, hunkHead, listRows, onlyQuery, terms } from '../lib/rows.mjs'
 
@@ -136,7 +136,9 @@ const refreshPeers = async ($: any) => {
       const adds = files.reduce((n, f) => n + (p.files[f]?.added?.length ?? 0), 0)
       const dels = files.reduce((n, f) => n + (p.files[f]?.removed?.length ?? 0), 0)
       const title = await k($).sessionTitle(p)
-      list.push({ session: p.session, name: tag + nameOf(p), ticket: p.ticket, title, files: files.length, shared, last, started: p.started, adds, dels, doing, sharedFiles })
+      // The pane's name: the one the person gave the session, else its id; the task is a tag beside it.
+      const label = await k($).sessionLabel(p).catch(() => null)
+      list.push({ session: p.session, name: tag + (label ?? idOf(p)), ticket: p.ticket, title, files: files.length, shared, last, started: p.started, adds, dels, doing, sharedFiles })
     }
   }
   list.sort((a, b) => b.last - a.last)
@@ -208,7 +210,7 @@ const poll = async ($: any) => {
 const openPeer = async ($: any, id: string) => {
   await openPane($)
   await update($, focusAtom, () => null)
-  const ids = (await read($, indexAtom)).repos.filter(r => r.sessions.some(s => s.id === id)).map(r => `s:${r.root}:${id}`)
+  const ids = (await read($, indexAtom)).repos.some(r => r.sessions.some(s => s.id === id)) ? [`s:${id}`] : []
   if (!ids.length) return
   await update($, foldAtom, v => ({ ...v, flip: v.flip.filter(x => !ids.includes(x)) }))
   await $.ui.focus({ requestId: PANE, key: ids[0] }).catch(() => {})
@@ -541,6 +543,7 @@ export const register: Register = on => {
     const name = (p: Peer) => (
       <Button key={`peer:${p.session}`} plain onPress={() => openPeer($, p.session)}>
         {ringed(Text, ring === `peer:${p.session}`, <Text color={col(p.session)} bold>{p.name}</Text>)}
+        {p.ticket ? <Text color={col(p.session)}>{` ${p.ticket}`}</Text> : null}
       </Button>
     )
     // Compact: name files|shared +N −N time per peer; name in the peer's color, +green −red, shared purple.
@@ -583,7 +586,7 @@ export const register: Register = on => {
                     p.title ? { s: `  ${p.title}`, cut: true } : null,
                     p.doing ? { s: `  ${p.doing}`, dim: true, cut: true } : null,
                   ].filter(Boolean) as Span[],
-                  e.props.bodyColumns - 1 - p.name.length,
+                  e.props.bodyColumns - 1 - p.name.length - (p.ticket ? p.ticket.length + 1 : 0),
                 )
                   .slice(1)
                   .map((x: Span) => (
