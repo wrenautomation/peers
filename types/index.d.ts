@@ -2,6 +2,8 @@ export type Peer = {
   session: string
   name: string
   ticket?: string
+  /** Its task's title, else its Claude Code session's title. */
+  title?: string | null
   files: number
   shared: number
   last: number
@@ -50,6 +52,9 @@ export type ViewFile = {
 export type ViewSession = {
   id: string
   name: string
+  // The claimed task's id; its name is that id.
+  ticket?: string | null
+  // Its task's title, else its Claude Code session's title.
   title: string | null
   doing: string | null
   started: number

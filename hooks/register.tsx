@@ -3,7 +3,7 @@ import type { Register, RenderChildren, RenderElement } from 'claude-code'
 import type { Peer, Row, Span, ViewBody, ViewFocus, ViewFold, ViewIndex } from '../types'
 import { core, dirOf, nameOf, peerLinesLost, quote, uncommitted } from '../lib/core.mjs'
 import { delta } from '../lib/lines.mjs'
-import { ADD, DEL, ago, cast, colorRule, docRow, fileHead, hunkHead, listRows, onlyQuery, terms } from '../lib/rows.mjs'
+import { ADD, DEL, ago, cast, fit, colorRule, docRow, fileHead, hunkHead, listRows, onlyQuery, terms } from '../lib/rows.mjs'
 
 // One checkout, many sessions. Every session keeps its own ledger file:
 //   ~/.claude/peers/<encodeURIComponent(repo root)>/<session id>.json
@@ -133,7 +133,8 @@ const refreshPeers = async ($: any) => {
       // The distinct lines their edits put in and took out: near the diff's counts, no git read.
       const adds = files.reduce((n, f) => n + (p.files[f]?.added?.length ?? 0), 0)
       const dels = files.reduce((n, f) => n + (p.files[f]?.removed?.length ?? 0), 0)
-      list.push({ session: p.session, name: tag + nameOf(p), ticket: p.ticket, files: files.length, shared, last, started: p.started, adds, dels, doing, sharedFiles })
+      const title = await k($).sessionTitle(p)
+      list.push({ session: p.session, name: tag + nameOf(p), ticket: p.ticket, title, files: files.length, shared, last, started: p.started, adds, dels, doing, sharedFiles })
     }
   }
   list.sort((a, b) => b.last - a.last)
@@ -223,7 +224,7 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     home = (await $.env.get('HOME')) ?? ''
     session = await $.session.id()
-    c = core({ home, session })
+    c = core({ home, session, backlog: (await $.env.get('BACKLOG_CWD')) ?? '' })
     cwdRoot = await k($).rootOf(e.cwd)
     if (cwdRoot) await k($).saveMine(await k($).loadMine(cwdRoot))
     // A reload runs session.end, then session.start: this session's ledgers are live again.
@@ -315,7 +316,7 @@ export const register: Register = on => {
             <Text dimColor>↑↓ move · enter opens · ctrl+x ← wider · esc closes</Text>
           </Box>
           <Text> </Text>
-          {(listRows(ix, fold, now) as Row[]).map(r =>
+          {(listRows(ix, fold, now, e.props.bodyColumns - 1) as Row[]).map(r =>
             r.press ? (
               <Button key={r.key} plain onPress={'fold' in r.press ? flip(r.press.fold) : show(r.press.open)}>
                 {ringed(Text, ring === r.key, spans(r.spans))}
@@ -482,6 +483,8 @@ export const register: Register = on => {
     const wide = await read($, wideAtom)
     const ring = (await read($, ringAtom))[e.requestId]
     const flip = () => void update($, wideAtom, w => !w)
+    // nums as plain text, to measure the row; a peer's row (name, nums, title, what it last did) takes at most 2 rows.
+    const numsText = (p: Peer) => ` ${p.files}|${p.shared}${p.adds ? ` +${p.adds}` : ''}${p.dels ? ` −${p.dels}` : ''} ${ago(now - p.last)}`
     const nums = (p: Peer) => (
       <Text>
         <Text>{` ${p.files}`}</Text>
@@ -528,7 +531,18 @@ export const register: Register = on => {
                 <Text>
                   <Text color={col(p.session)} bold>{p.name}</Text>
                   {nums(p)}
-                  {p.doing ? <Text dimColor>{`  ${p.doing}`}</Text> : null}
+                  {fit(
+                    [
+                      { s: `${p.name}${numsText(p)}` },
+                      p.title ? { s: `  ${p.title}`, cut: true } : null,
+                      p.doing ? { s: `  ${p.doing}`, dim: true, cut: true } : null,
+                    ].filter(Boolean) as Span[],
+                    e.props.bodyColumns - 1,
+                  )
+                    .slice(1)
+                    .map((x: Span) => (
+                      <Text dimColor={x.dim}>{x.s}</Text>
+                    ))}
                 </Text>,
               )}
             </Button>

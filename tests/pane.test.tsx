@@ -11,9 +11,9 @@ const INDEX = {
       root: '/r/lab',
       name: 'lab',
       sessions: [
-        { id: S1, name: 'WA-901', title: 'launch plan', doing: 'Move the launch to Monday', started: 1, updated: 60_000, commits: [] },
-        { id: S2, name: 's-bbbb', title: null, doing: null, started: 2, updated: 1, commits: [] },
-        { id: S3, name: 's-cccc', title: null, doing: null, started: 3, updated: 2, commits: [{ sha: 'abcdef1234567', at: 5_000, files: 13, t: 'Add the comment flow' }] },
+        { id: S1, name: 'WA-901', ticket: 'WA-901', title: 'launch plan', doing: 'Move the launch to Monday', started: 1, updated: 60_000, commits: [] },
+        { id: S2, name: 'cc-bbbb', ticket: null, title: 'Fix the login page so the code field takes a paste and the form keeps what was typed after a reload', doing: null, started: 2, updated: 1, commits: [] },
+        { id: S3, name: 'cc-cccc', ticket: null, title: null, doing: null, started: 3, updated: 2, commits: [{ sha: 'abcdef1234567', at: 5_000, files: 13, t: 'Add the comment flow' }] },
       ],
       files: [
         {
@@ -96,7 +96,11 @@ test('the pane lists files and opens one as a document and a diff', async ($, on
     const group = JSON.stringify(await ui.find({ key: `s:/r/lab:${S1}` }))
     expect(group).toContain('▼')
     expect(group).not.toContain('●')
-    expect((await ui.find({ key: `f:${S1}:/r/lab/plan.md` }))?.text).toContain('s-bbbb')
+    expect((await ui.find({ key: `f:${S1}:/r/lab/plan.md` }))?.text).toContain('cc-bbbb')
+  // A session's row shows what it is on, cut to 2 rows of the pane's body.
+  const row = (await ui.find({ type: 'Text', text: /Fix the login page/ }))?.text ?? ''
+  expect(row).toContain('cc-bbbb')
+  expect(row).toContain('Fix the login page')
     // All its work committed: the session still shows, with its commit.
     expect((await ui.find({ key: `s:/r/lab:${S3}` }))?.text).toContain('nothing open')
     expect((await ui.find({ type: 'Text', text: /Add the comment flow/ }))?.text).toContain('abcdef12  Add the comment flow  13 files')

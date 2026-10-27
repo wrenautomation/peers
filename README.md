@@ -110,6 +110,10 @@ Up and down walk the rows with this in `~/.claude/keybindings.json` (by default 
 
 Edit, then commit, in separate commands: the ledger records a Bash edit after that command ends, so `sed ... && peers commit` sees nothing to commit.
 
+## Names and titles
+
+A session with a task is named by the task id (`WA-879`). Any other is named by its agent and the first four characters of its id: `cc-b641` for Claude Code, `codex-…`, `cursor-…`. Beside the name, the pane, `peers tui` and the wide band show what the session is on: the task's title, else the Claude Code session's title (the name you gave it, else the one Claude Code made). Its last change title goes under it. Each session's text wraps to 2 rows at most; past that it is cut at a word, the last part first. Task titles come from the board at `BACKLOG_CWD`. Session titles come from the transcript, read again every 10 seconds.
+
 ## Where the state lives
 
 `~/.claude/peers/<encoded repo root>/<session id>.json`. One file per session. No locks. A session file older than 12 hours, or marked ended, is ignored. Codex and Cursor ids carry a `codex_` or `cursor_` prefix.
