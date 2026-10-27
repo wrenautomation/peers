@@ -116,7 +116,7 @@ A session's id is its agent and the first four characters of its session id: `cc
 
 ## Where the state lives
 
-`~/.claude/peers/<encoded repo root>/<session id>.json`. One file per session. No locks. A Claude session file counts only while its session is in Claude Code's running list (`~/.claude/sessions`), and for 12 hours at most. A Codex or Cursor file, or any file with no such list, is ignored once marked ended. The band leaves out a peer with no open file and no task. Codex and Cursor ids carry a `codex_` or `cursor_` prefix.
+`~/.claude/peers/<encoded repo root>/<session id>.json`. One file per session. No locks. A Claude session file counts only while its session is in Claude Code's running list (`~/.claude/sessions`), and for 12 hours at most. A terminal that moved its work to a background job counts as gone; the job shows under its own id. Peers lists only what `git status` lists, so `.gitignore`, `.git/info/exclude` and your global git ignore hide files from it too. A Codex or Cursor file, or any file with no such list, is ignored once marked ended. The band leaves out a peer with no open file and no task. Codex and Cursor ids carry a `codex_` or `cursor_` prefix.
 
 `~/.claude/peers-run/` holds hook state for the other agents: `snap/` (a pre-tool snapshot until its post-tool event, swept after 1 hour) and `agents/<pid>.json` (agent process to session, swept after 48 hours).
 
