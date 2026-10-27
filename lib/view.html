@@ -17,7 +17,7 @@
   /* One type scale: 12 for meta, 13 for the UI, 14 for body text; weights 400, 500, 600 only. */
   --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
   --mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
-  --fs-meta: 12px; --fs-ui: 13px; --fs-body: 14px;
+  --fs-meta: 12px; --fs-ui: 13px; --fs-body: 14px; --fs-head: 18px;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -37,7 +37,7 @@ button { font: inherit; color: inherit; }
 
 /* Shell: top bar, then tree | main | feed. */
 .top { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 12px; padding: 8px 16px; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
-.top h1 { font-size: var(--fs-body); font-weight: 600; margin: 0; display: flex; align-items: baseline; gap: 10px; }
+.top h1 { font-size: var(--fs-head); letter-spacing: -0.01em; font-weight: 600; margin: 0; display: flex; align-items: baseline; gap: 10px; }
 .live { font-size: var(--fs-meta); font-weight: 400; color: var(--faint); }
 .live.on { color: var(--add); }
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; background: var(--panel); }
@@ -97,8 +97,8 @@ div.wunderbaum .wb-row.changed span.wb-title { color: var(--ink); font-weight: 5
 div.wunderbaum i.wb-icon[style] { background-size: 16px; background-position: center; background-repeat: no-repeat; }
 
 /* Overview: sessions > files > changes, each a <details>. */
-.repo { font: 600 var(--fs-body) var(--mono); color: var(--ink); margin: 28px 0 10px; }
-.repo:first-child { margin-top: 0; }
+:not(.wb-row).repo { font: 600 var(--fs-head) var(--mono); color: var(--ink); margin: 28px 0 10px; }
+:not(.wb-row).repo:first-child { margin-top: 0; }
 details > summary { list-style: none; cursor: pointer; }
 details > summary::-webkit-details-marker { display: none; }
 .car { display: inline-block; width: 12px; color: var(--faint); transition: transform .15s; flex: none; font-size: 10px; }

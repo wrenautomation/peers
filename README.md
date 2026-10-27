@@ -54,7 +54,7 @@ peers install cursor --project # <repo>/.cursor/hooks.json
 peers install codex --uninstall
 ```
 
-The install merges into the config and keeps your own hooks. Each hook event runs `peers hook <agent>`. It records edits and shell commands, denies the same guarded commands, and tells the agent when a command changed a peer's file. Their sessions show as `codex-xxxx` and `cursor-xxxx` (Claude Code's as `cc-xxxx`) in the band, the pane and `peers view`. `peers status|diff|commit` in the agent's shell find its session through the agent's process.
+The install merges into the config and keeps your own hooks. Each hook event runs `peers hook <agent>`. It records edits and shell commands, denies the same guarded commands, and tells the agent when a command changed a peer's file. Their sessions show as `codex-xxxx` and `cursor-xxxx` (Claude Code's as `cc-xxxx`) in the band, the pane and `peers view`. A session with no edit, commit or task shows nowhere and writes no ledger. `peers status|diff|commit` in the agent's shell find its session through the agent's process.
 
 Claude Code needs none of this: its mod calls the same code in process (`lib/core.mjs`).
 
