@@ -122,7 +122,7 @@ const refreshPeers = async ($: any) => {
     const mine: Ledger = await k($).loadMine(root)
     if (Object.keys(mine.files).length) me.push({ id: session, started: mine.started })
     const open = await k($).openFiles(root)
-    const tag = all.size > 1 ? `${root.slice(root.lastIndexOf('/') + 1)}:` : ''
+    const tag = all.size > 1 ? `${root.slice(root.lastIndexOf('/') + 1)}/` : ''
     for (const p of (await k($).peersOf(root)) as Ledger[]) {
       // Open files only, as the pane lists them: dirty in git and not taken by their own commit since.
       const files = Object.keys(p.files).filter(f => open.has(f) && uncommitted(p, f))
