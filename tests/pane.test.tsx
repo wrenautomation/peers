@@ -90,7 +90,9 @@ test('the pane lists files and opens one as a document and a diff', async ($, on
     const ui = await $.ui.mount({ ...PANE, surface })
     // One row per session: the name it was given, its id, its task, its title.
     const top = (await ui.find({ key: `row:s:${S1}` }))?.text ?? ''
-    for (const t of ['launch', 'cc-aaaa', 'WA-901', 'launch plan']) expect(top).toContain(t)
+    for (const t of ['launch', 'cc-aaaa', 'WA-901']) expect(top).toContain(t)
+    // The title sits on its own line under the name.
+    expect((await ui.find({ type: 'Text', text: 'launch plan' }))).toBeDefined()
     // Sessions open: the file under each session that owns a change in it, as repo/path, with the said title.
     expect(await ui.find({ key: `f:${S2}:/r/lab/plan.md` })).toBeDefined()
     expect((await ui.find({ key: `row:f:${S1}:/r/lab/plan.md` }))?.text).toContain('lab/plan.md')
@@ -105,7 +107,7 @@ test('the pane lists files and opens one as a document and a diff', async ($, on
     expect(group).not.toContain('●')
     expect((await ui.find({ key: `row:f:${S1}:/r/lab/plan.md` }))?.text).toContain('cc-bbbb')
   // A session's row shows what it is on, cut to 2 rows of the pane's body.
-  const row = (await ui.find({ key: `row:s:${S2}` }))?.text ?? ''
+  const row = ((await ui.find({ key: `row:s:${S2}` }))?.text ?? '') + ((await ui.find({ type: 'Text', text: /Fix the login page/ }))?.text ?? '')
   expect(row).toContain('cc-bbbb')
   expect(row).toContain('Fix the login page')
     // All its work committed: the session still shows, with its commit.

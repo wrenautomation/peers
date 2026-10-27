@@ -1,6 +1,8 @@
 export type Peer = {
   session: string
   name: string
+  /** Its short id, `cc-2724`. */
+  id?: string
   ticket?: string
   /** Its task's title, else its Claude Code session's title. */
   title?: string | null
@@ -91,4 +93,4 @@ declare module 'claude-code' {
 
 // lib/rows.mjs: the one row model the pane and `peers tui` draw.
 export type Span = { s: string; color?: string; bg?: string; bold?: boolean; dim?: boolean; strike?: boolean; under?: boolean; hit?: boolean }
-export type Row = { key: string; spans: Span[]; press?: { fold: string } | { open: NonNullable<ViewFocus> } }
+export type Row = { key: string; spans: Span[]; press?: { fold: string } | { open: NonNullable<ViewFocus> }; indent?: number }

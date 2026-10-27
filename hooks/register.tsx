@@ -138,10 +138,14 @@ const refreshPeers = async ($: any) => {
       const title = await k($).sessionTitle(p)
       // The pane's name: the one the person gave the session, else its id; the task is a tag beside it.
       const label = await k($).sessionLabel(p).catch(() => null)
-      list.push({ session: p.session, name: tag + (label ?? idOf(p)), ticket: p.ticket, title, files: files.length, shared, last, started: p.started, adds, dels, doing, sharedFiles })
+      list.push({ session: p.session, name: tag + (label ?? idOf(p)), id: idOf(p), ticket: p.ticket, title, files: files.length, shared, last, started: p.started, adds, dels, doing, sharedFiles })
     }
   }
   list.sort((a, b) => b.last - a.last)
+  // Two peers with one given name: each also shows its id, so the band tells them apart.
+  const seen = new Map<string, number>()
+  for (const p of list) seen.set(p.name, (seen.get(p.name) ?? 0) + 1)
+  for (const p of list) if (seen.get(p.name)! > 1 && !p.name.endsWith(p.id)) p.name = `${p.name} ${p.id}`
   mineStarted = me
   const cur = await read($, peersAtom)
   if (JSON.stringify(cur) !== JSON.stringify(list)) await update($, peersAtom, () => list)
@@ -338,13 +342,16 @@ export const register: Register = on => {
         const first = r.spans.findIndex(x => x.hit)
         const last = r.spans.findLastIndex(x => x.hit)
         const [lead, name, tail] = first < 0 ? [[], r.spans, []] : [r.spans.slice(0, first), r.spans.slice(first, last + 1), r.spans.slice(last + 1)]
+        // Each tail span is its own item: a full line wraps to the row's indent, never into a column beside the name.
         return (
-          <Box key={`row:${r.key}`} flexDirection="row">
+          <Box key={`row:${r.key}`} flexDirection="row" flexWrap="wrap" paddingLeft={r.indent ?? 0}>
             {lead.length > 0 && <Text>{spans(lead)}</Text>}
             <Button key={r.key} plain onPress={'fold' in r.press! ? flip(r.press.fold) : show(r.press!.open)}>
               {ringed(Text, ring === r.key, spans(name))}
             </Button>
-            {tail.length > 0 && <Text>{spans(tail)}</Text>}
+            {tail.map((x, i) => (
+              <Text key={i}>{spans([x])}</Text>
+            ))}
           </Box>
         )
       }
@@ -359,7 +366,9 @@ export const register: Register = on => {
             r.press ? (
               pressRow(r)
             ) : (
-              <Text key={r.key}>{r.spans.length ? spans(r.spans) : ' '}</Text>
+              <Box key={r.key} paddingLeft={r.indent ?? 0}>
+                <Text>{r.spans.length ? spans(r.spans) : ' '}</Text>
+              </Box>
             ),
           )}
         </Box>
