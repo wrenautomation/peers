@@ -3,6 +3,7 @@ import { expect, mock, test } from 'claude-code/testing'
 // The /peers pane against a fake `peers view` server: a file list, then one file as a document.
 const S1 = 'aaaa1111-x'
 const S2 = 'bbbb2222-y'
+const S3 = 'cccc3333-z'
 const INDEX = {
   sig: 's1',
   repos: [
@@ -12,6 +13,7 @@ const INDEX = {
       sessions: [
         { id: S1, name: 'WA-901', title: 'launch plan', doing: 'Move the launch to Monday', started: 1, updated: 60_000, commits: [] },
         { id: S2, name: 's-bbbb', title: null, doing: null, started: 2, updated: 1, commits: [] },
+        { id: S3, name: 's-cccc', title: null, doing: null, started: 3, updated: 2, commits: [{ sha: 'abcdef1234567', at: 5_000, files: 13, t: 'Add the comment flow' }] },
       ],
       files: [
         {
@@ -88,6 +90,9 @@ test('the pane lists files and opens one as a document and a diff', async ($, on
     expect(group).toContain('▼')
     expect(group).not.toContain('●')
     expect((await ui.find({ key: `f:${S1}:/r/lab/plan.md` }))?.text).toContain('s-bbbb')
+    // All its work committed: the session still shows, with its commit.
+    expect((await ui.find({ key: `s:/r/lab:${S3}` }))?.text).toContain('nothing open')
+    expect((await ui.find({ type: 'Text', text: /Add the comment flow/ }))?.text).toContain('abcdef12  Add the comment flow  13 files')
     // Zoom 1 folds the files away; a press on a group opens that one group.
     await ui.press({ key: 'zoom1' })
     expect(await ui.find({ key: `f:${S1}:/r/lab/plan.md` })).toBeUndefined()

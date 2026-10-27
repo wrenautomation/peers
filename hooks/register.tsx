@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { Register, RenderChildren, RenderElement } from 'claude-code'
 import type { Peer, ViewBody, ViewFile, ViewFocus, ViewFold, ViewIndex, ViewLine, ViewRepo, ViewSession } from '../types'
-import { core, dirOf, nameOf, peerLinesLost, quote } from '../lib/core.mjs'
+import { core, dirOf, nameOf, peerLinesLost, quote, uncommitted } from '../lib/core.mjs'
 import { delta } from '../lib/lines.mjs'
 
 // One checkout, many sessions. Every session keeps its own ledger file:
@@ -139,7 +139,8 @@ const refreshPeers = async ($: any) => {
     if (Object.keys(mine.files).length) me.push({ id: session, started: mine.started })
     const tag = all.size > 1 ? `${root.slice(root.lastIndexOf('/') + 1)}:` : ''
     for (const p of (await k($).peersOf(root)) as Ledger[]) {
-      const files = Object.keys(p.files)
+      // Open files only: a file their commit took is done, as the pane shows it.
+      const files = Object.keys(p.files).filter(f => uncommitted(p, f))
       const sharedFiles = files.filter(f => mine.files[f])
       const shared = sharedFiles.length
       const doing = files.flatMap(f => p.files[f]?.edits ?? []).reduce<{ at: number; t: string } | null>((m, x) => (!m || x.at > m.at ? x : m), null)?.t
@@ -327,7 +328,8 @@ export const register: Register = on => {
       const flip = (id: string) => async () =>
         void (await update($, foldAtom, v => ({ ...v, flip: v.flip.includes(id) ? v.flip.filter(x => x !== id) : [...v.flip.slice(-200), id] })))
       const zoom = (z: 1 | 2 | 3) => async () => void (await update($, foldAtom, () => ({ zoom: z, flip: [] })))
-      const num = (a: number, d: number) => `${a ? ` +${a}` : ''}${d ? ` −${d}` : ''}`
+      // +/− in green and red; gray is for times only.
+      const nums = (a: number, d: number) => [a ? <Text color={ADD}>{`  +${a}`}</Text> : null, d ? <Text color={DEL}>{` −${d}`}</Text> : null]
       const people = [...byId.values()].sort((a, b) => b.updated - a.updated)
       const feed = ix.repos
         .flatMap(r => r.feed ?? [])
@@ -346,8 +348,10 @@ export const register: Register = on => {
         const out: RenderChildren[] = []
         // One edge: a 2-column gutter holds the fold arrow; a session's name and its file paths are in its color.
         // Other authors of a file follow it by name, each in their own color.
+        const byRepo = new Map(r.sessions.map(s => [s.id, s]))
         for (const [a, files] of groups) {
-          if (!files.length) continue
+          const commits = (a && byRepo.get(a)?.commits) || []
+          if (!files.length && !commits.length) continue
           const id = `s:${r.root}:${a}`
           const mine = (f: ViewFile) => (f.changes?.length ? f.changes.filter(c => own(c.a) === a) : [])
           const adds = files.reduce((n, f) => n + (mine(f).length ? mine(f).reduce((m, c) => m + c.adds, 0) : f.adds), 0)
@@ -358,7 +362,9 @@ export const register: Register = on => {
               {ringed(Text, ring === id, [
                 <Text bold>{open ? '▼ ' : '▶ '}</Text>,
                 <Text bold color={col(a)}>{a ? nameOf(a) : 'Unattributed'}</Text>,
-                <Text dimColor>{` ${files.length} file${files.length === 1 ? '' : 's'}${num(adds, dels)}`}</Text>,
+                <Text>{files.length ? `  ${files.length} open` : '  nothing open'}</Text>,
+                ...nums(adds, dels),
+                commits.length ? <Text>{`  ${commits.length} commit${commits.length === 1 ? '' : 's'}`}</Text> : null,
               ])}
             </Button>,
           )
@@ -372,10 +378,12 @@ export const register: Register = on => {
                 {ringed(Text, ring === `f:${a}:${r.root}/${f.rel}`, [
                   '  ',
                   kindMark(kind, col(a)),
-                  <Text color={col(a)} strikethrough={kind === 'delete'} dimColor={kind === 'delete'}>{f.rel}</Text>,
-                  ...f.authors.filter(x => own(x) !== a).map(x => <Text color={col(x)}>{` ${nameOf(x)}`}</Text>),
-                  <Text dimColor>{`${f.count ? ` ${f.count} new files` : ''}${num(cs.length ? cs.reduce((n, c) => n + c.adds, 0) : f.adds, cs.length ? cs.reduce((n, c) => n + c.dels, 0) : f.dels)} · ${ago(now - f.mtime)}`}</Text>,
-                  fold.zoom < 3 && said.length ? <Text dimColor>{`  ${said.join(' · ')}`}</Text> : null,
+                  <Text strikethrough={kind === 'delete'}>{f.rel}</Text>,
+                  ...f.authors.filter(x => own(x) !== a).map(x => <Text color={col(x)}>{`  ${nameOf(x)}`}</Text>),
+                  f.count ? <Text>{`  ${f.count} new files`}</Text> : null,
+                  ...nums(cs.length ? cs.reduce((n, c) => n + c.adds, 0) : f.adds, cs.length ? cs.reduce((n, c) => n + c.dels, 0) : f.dels),
+                  <Text dimColor>{`  ${ago(now - f.mtime)}`}</Text>,
+                  fold.zoom < 3 && said.length ? <Text>{`  ${said.join(' · ')}`}</Text> : null,
                 ])}
               </Button>,
             )
@@ -384,11 +392,22 @@ export const register: Register = on => {
                 out.push(
                   <Text>
                     {'    '}
-                    <Text color={col(c.a)} dimColor={!c.said}>{c.t || 'change'}</Text>
-                    <Text dimColor>{`${num(c.adds, c.dels)} · L${c.line}`}</Text>
+                    <Text color={c.said ? undefined : col(c.a)}>{c.t || 'change'}</Text>
+                    {nums(c.adds, c.dels)}
+                    <Text dimColor>{`  L${c.line}`}</Text>
                   </Text>,
                 )
           }
+          for (const c of commits)
+            out.push(
+              <Text key={`c:${a}:${c.sha}`}>
+                {'  '}
+                <Text color={col(a)} bold>{' ✓ '}</Text>
+                <Text color={col(a)}>{c.sha.slice(0, 8)}</Text>
+                <Text>{`  ${c.t || 'commit'}  ${c.files} file${c.files === 1 ? '' : 's'}`}</Text>
+                <Text dimColor>{`  ${ago(now - c.at)}`}</Text>
+              </Text>,
+            )
         }
         return out
       }
@@ -409,10 +428,10 @@ export const register: Register = on => {
             <Box flexDirection="column">
               <Text>
                 <Text bold color={col(s.id)}>{s.name}</Text>
-                {s.title ? <Text dimColor>{` ${s.title}`}</Text> : null}
+                {s.title ? <Text>{`  ${s.title}`}</Text> : null}
                 <Text dimColor>{` · ${ago(now - s.updated)}`}</Text>
               </Text>
-              {s.doing ? <Text dimColor>{`  ${s.doing}`}</Text> : null}
+              {s.doing ? <Text>{`  ${s.doing}`}</Text> : null}
             </Box>
           ))}
           {fold.zoom >= 2 &&
@@ -431,9 +450,9 @@ export const register: Register = on => {
               {feed.map(e => (
                 <Text>
                   <Text color={col(e.a)}>{`${nameOf(e.a)} `}</Text>
-                  <Text dimColor>{`${ago(now - e.at)} `}</Text>
-                  {e.kind === 'commit' ? `commit ${e.sha ?? ''} ${e.t}` : e.t || 'Edited'}
-                  <Text dimColor>{`  ${e.rels
+                  {e.kind === 'commit' ? `✓ ${e.sha ?? ''} ${e.t}` : e.t || 'Edited'}
+                  <Text dimColor>{`  ${ago(now - e.at)}`}</Text>
+                  <Text>{`  ${e.rels
                     .slice(0, 3)
                     .map(x => x.slice(x.lastIndexOf('/') + 1))
                     .join(', ')}${e.rels.length > 3 ? ` +${e.rels.length - 3}` : ''}`}</Text>
@@ -487,7 +506,7 @@ export const register: Register = on => {
         room -= source.length
         rows.push(
           <Text>
-            <Text bold={hunk.said} dimColor={!hunk.said}>{hunk.t || hunk.at || `line ${hunk.new}`}</Text>
+            <Text bold>{hunk.t || hunk.at || `line ${hunk.new}`}</Text>
             <Text color={col(hunk.a)}>{hunk.a ? `  ${nameOf(hunk.a)}` : ''}</Text>
           </Text>,
           <Code format="diff" path={focus.rel} source={source} />,

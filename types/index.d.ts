@@ -54,7 +54,7 @@ export type ViewSession = {
   doing: string | null
   started: number
   updated: number
-  commits: { sha: string; at: number; files: number }[]
+  commits: { sha: string; at: number; files: number; t?: string }[]
 }
 export type ViewEvent = { kind: 'edit' | 'commit'; at: number; a: string; t: string; sha?: string; rels: string[] }
 export type ViewRepo = { root: string; name: string; sessions: ViewSession[]; files: ViewFile[]; feed: ViewEvent[] }
