@@ -495,6 +495,12 @@ export const register: Register = on => {
         <Text dimColor>{` ${ago(now - p.last)}`}</Text>
       </Text>
     )
+    // Only the name is a Button: the pointer lights the name alone, not the counts or the title.
+    const name = (p: Peer) => (
+      <Button key={`peer:${p.session}`} plain onPress={() => openPeer($, p.session)}>
+        {ringed(Text, ring === `peer:${p.session}`, <Text color={col(p.session)} bold>{p.name}</Text>)}
+      </Button>
+    )
     // Compact: name files|shared +N −N time per peer; name in the peer's color, +green −red, shared purple.
     // Peers wrap by whole peer in the room left of [+]; [+] sits flush right, beside the engine's [-].
     if (!wide)
@@ -505,9 +511,10 @@ export const register: Register = on => {
               {ringed(Text, ring === 'peers-band', <Text dimColor>peers</Text>)}
             </Button>
             {peers.map(p => (
-              <Button key={`peer:${p.session}`} plain onPress={() => openPeer($, p.session)}>
-                {ringed(Text, ring === `peer:${p.session}`, [<Text color={col(p.session)} bold>{p.name}</Text>, nums(p)])}
-              </Button>
+              <Box key={`c:${p.session}`} flexDirection="row">
+                {name(p)}
+                {nums(p)}
+              </Box>
             ))}
           </Box>
           <Button key="peers-wide" plain dimColor onPress={flip}>[+]</Button>
@@ -515,7 +522,7 @@ export const register: Register = on => {
       )
     // Verbose: a row per peer with what it last said it did, then the files we both changed.
     return (
-      <Box flexDirection="column" width="100%" paddingLeft={1} rowGap={1}>
+      <Box flexDirection="column" width="100%" paddingLeft={1}>
         <Box flexDirection="row" justifyContent="space-between" columnGap={2}>
           <Button key="peers-band" plain onPress={() => void openPane($)}>
             {ringed(Text, ring === 'peers-band', <Text dimColor>{`peers · ${peers.length} sessions · files|shared`}</Text>)}
@@ -524,28 +531,24 @@ export const register: Register = on => {
         </Box>
         {peers.map(p => (
           <Box key={`w:${p.session}`} flexDirection="column">
-            <Button key={`peer:${p.session}`} plain onPress={() => openPeer($, p.session)}>
-              {ringed(
-                Text,
-                ring === `peer:${p.session}`,
-                <Text>
-                  <Text color={col(p.session)} bold>{p.name}</Text>
-                  {nums(p)}
-                  {fit(
-                    [
-                      { s: `${p.name}${numsText(p)}` },
-                      p.title ? { s: `  ${p.title}`, cut: true } : null,
-                      p.doing ? { s: `  ${p.doing}`, dim: true, cut: true } : null,
-                    ].filter(Boolean) as Span[],
-                    e.props.bodyColumns - 1,
-                  )
-                    .slice(1)
-                    .map((x: Span) => (
-                      <Text dimColor={x.dim}>{x.s}</Text>
-                    ))}
-                </Text>,
-              )}
-            </Button>
+            <Box flexDirection="row">
+              {name(p)}
+              <Text>
+                {nums(p)}
+                {fit(
+                  [
+                    { s: numsText(p) },
+                    p.title ? { s: `  ${p.title}`, cut: true } : null,
+                    p.doing ? { s: `  ${p.doing}`, dim: true, cut: true } : null,
+                  ].filter(Boolean) as Span[],
+                  e.props.bodyColumns - 1 - p.name.length,
+                )
+                  .slice(1)
+                  .map((x: Span) => (
+                    <Text dimColor={x.dim}>{x.s}</Text>
+                  ))}
+              </Text>
+            </Box>
             {p.sharedFiles?.length ? <Text color={SHARED}>{`  shared: ${p.sharedFiles.join(', ')}`}</Text> : null}
           </Box>
         ))}

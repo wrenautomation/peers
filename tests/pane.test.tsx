@@ -166,7 +166,9 @@ test('the band shows one line, and [+] opens a row per peer', async ($, on) => {
     surface: 'terminal',
     props: { hasSurvey: false, isWorking: false, maxRows: 20, bodyColumns: 120, scroll: { offset: 0, bodyRows: 20 }, view: {} },
   } as any)
-  expect((await ui.find({ key: `peer:${S1}` }))?.text).toContain('WA-901 3|1 +4 −2')
+  // Only the name is the Button, so the pointer lights the name alone.
+  expect((await ui.find({ key: `peer:${S1}` }))?.text).toBe('WA-901')
+  expect((await ui.find({ key: `c:${S1}` }))?.text).toContain('WA-901 3|1 +4 −2')
   // Peers wrap by whole peer left of [+]; [+] is the last child, flush right beside the engine's [-].
   const band: any = await ui.find({ type: 'Box' })
   expect(band).toMatchObject({ props: { width: '100%', paddingLeft: 1 } })
@@ -183,7 +185,7 @@ test('the band shows one line, and [+] opens a row per peer', async ($, on) => {
   await ui.press({ key: `peer:${S1}` })
   expect(opens[0]).toMatchObject({ id: 'peers', focus: true })
   await ui.press({ key: 'peers-wide' })
-  expect((await ui.find({ type: 'Text', text: /Move the launch to Monday/ }))?.text).toContain('WA-901')
+  expect((await ui.find({ key: `w:${S1}` }))?.text).toContain('WA-901 3|1 +4 −2 1m  Move the launch to Monday')
   expect((await ui.find({ type: 'Text', text: /shared: plan.md/ }))).toBeDefined()
   await ui.press({ key: 'peers-wide' })
   expect((await ui.find({ type: 'Text', text: /shared: plan.md/ }))).toBeUndefined()
