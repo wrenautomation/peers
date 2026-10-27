@@ -7,7 +7,7 @@ Each session gets a ledger of the files it edited. The ledger drives four things
 - **Scoped git.** `peers status`, `peers diff`, `peers commit -m "..."` see only this session's files. In a file a peer also edits, they see only this session's hunks. `peers check` runs the repo's gate on that commit in a side worktree.
 - **Peer awareness.** When a peer edited the exact file this session reads or edits, the tool result carries one line: who, when, committed or not. Nothing else reaches the model.
 - **A band above the prompt.** Live peers by name, their task, file counts, last edit. Zero tokens.
-- **Tasks.** `peers ready` lists open work. `peers claim <id>` binds a task and sets it In Progress. Every `peers commit` appends the sha to its notes. `peers close` marks it Done; it stays on the board in the Done column; it refuses while an acceptance criterion or DoD item is unchecked (`--force` overrides). The agent never edits the task by hand. The board is [Backlog.md](https://github.com/MrLesk/Backlog.md): one Markdown file per task. Point `BACKLOG_CWD` at the board folder so every repo uses one board. Without `backlog` on PATH, the task id still lands in the commit trailer.
+- **Tasks.** `peers ready` lists open work. `peers claim <id>` binds a task and sets it In Progress. Every `peers commit` appends the sha to its notes. `peers close` marks it Done; it stays on the board in the Done column; it refuses while an acceptance criterion or DoD item is unchecked (`--force` overrides). The agent never edits the task by hand. The board is [Backlog.md](https://github.com/MrLesk/Backlog.md) by default: one Markdown file per task. Point `BACKLOG_CWD` at the board folder so every repo uses one board. Without `backlog` on PATH, the task id still lands in the commit trailer. Jira or your own board: see Task boards.
 
 The system prompt gets one short rule: peers' changes in files you did not touch are theirs, never mention, revert or commit them.
 
@@ -80,7 +80,7 @@ peers status                # your dirty files, peers hidden
 peers diff
 peers commit -m "add thing" # your files, your hunks only, trailer Ticket: wa-b5f
 peers files                 # your uncommitted files, for a formatter
-peers check                 # gate on that commit in ~/worktrees/<repo>-check
+peers check                 # gate (or config `check`) on that commit in ~/worktrees/<repo>-check
 peers close -r "shipped"   # Done, summary carries the sha
 peers ls                    # every live session in this repo
 peers view                  # live page of every session's edits
@@ -116,7 +116,7 @@ Edit, then commit, in separate commands: the ledger records a Bash edit after th
 
 ## Names and titles
 
-A session's id is its agent and the first four characters of its session id: `cc-b641` for Claude Code, `codex-…`, `cursor-…`. Its name is the name you gave it (`/rename`), else its id. The pane shows the id dim beside a given name, then the task id (`WA-879`) in the session's color. The band shows the name and the task; two peers with one name also show their ids. Under the name, the pane and `peers tui` show what the session is on: the task's title, else the title Claude Code made. The wide band shows it beside the name. A folded session cuts its title and its last change to 2 rows each; an open one shows them whole. Their wrapped lines use the full width. Its last change title goes under it.  Task titles come from the board at `BACKLOG_CWD`. Session titles come from the transcript, read again every 10 seconds.
+A session's id is its agent and the first four characters of its session id: `cc-b641` for Claude Code, `codex-…`, `cursor-…`. Its name is the name you gave it (`/rename`), else its id. The pane shows the id dim beside a given name, then the task id (`WA-879`) in the session's color. The band shows the name and the task; two peers with one name also show their ids. Under the name, the pane and `peers tui` show what the session is on: the task's title, else the title Claude Code made. The wide band shows it beside the name. A folded session cuts its title and its last change to 2 rows each; an open one shows them whole. Their wrapped lines use the full width. Its last change title goes under it.  Task titles come from the ledger (`peers claim` keeps the board's title), else from the board at `BACKLOG_CWD`. Session titles come from the transcript, read again every 10 seconds.
 
 ## Where the state lives
 
@@ -127,6 +127,28 @@ A session's id is its agent and the first four characters of its session id: `cc
 ## Hunks
 
 Each edit records the lines it added and removed (`lib/lines.mjs`). Only distinctive lines count: four or more characters with a letter or digit. A `}` could be anyone's. `peers commit` splits a shared file into `git diff -U0` hunks. A hunk is the peer's when it holds their lines and none of yours. Every other hunk is yours. The commit is built in a private index from HEAD: a peer's staged files never ride along. It lands with a compare-and-swap on HEAD, and builds again if a peer committed meanwhile. `--whole` takes the file as it is.
+
+## Task boards
+
+Set `board` in `~/.claude/peers/config.json`. Only the `peers` CLI talks to the board. `peers claim` keeps the task's title in the ledger, so the pane and the view need no board access and no token.
+
+- `"backlog"` (default): Backlog.md.
+- `"jira"`: Jira Cloud or Data Center, REST v2. The token comes only from env, never from the config:
+  - Cloud: `JIRA_EMAIL` and `JIRA_API_TOKEN` (an Atlassian API token).
+  - Data Center: `JIRA_API_TOKEN` (a personal access token), no `JIRA_EMAIL`.
+
+  ```json
+  { "board": "jira", "jira": { "url": "https://acme.atlassian.net", "jql": "project = PROJ AND assignee = currentUser() AND statusCategory = \"To Do\"", "claim": "In Progress", "close": "Done", "assign": true } }
+  ```
+
+  `ready` runs the JQL (default: your To Do issues). `claim` moves the issue to `claim` (a transition name or a status name, else the first In Progress status) and assigns it to you. Each commit adds a comment with its sha and subject. `close` comments the reason, then moves the issue to `close` (else the first Done status).
+- A path to an `.mjs` file, relative to the config's folder: its default export takes the config and returns `{ ready, claim, note, open, close }`. Any it leaves out does nothing. `lib/board.mjs` has the two built-in ones as examples.
+
+Jira links commits, branches and PRs that name an issue key, once your Jira site has the GitHub (or GitLab, Bitbucket) app. Each `peers commit` carries a `Ticket: <key>` trailer, so its commits show on the issue with no setup in peers. Put the key in the PR title, so a squash merge commit names it too.
+
+`check` in the config sets what `peers check` runs, as a shell line in the worktree (`"check": "npm test"`). Without it: `scripts/gates.sh changed` through bash, else the commit's stat. `peers check` tests your commit alone, without the peers' uncommitted hunks that your working tree also holds. A commit that needs a peer's hunk to pass fails there, not later in CI.
+
+Why one adapter in JS: the other choices were shell command lines in the config (no code, but one process per title and fragile quoting, worst on Windows) and an external CLI per tracker (jira-cli: an extra install, often blocked on work laptops). REST over Node's `fetch` needs nothing else installed and runs the same on Windows.
 
 ## Limits
 

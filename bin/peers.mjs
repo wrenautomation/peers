@@ -7,7 +7,8 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
 import { isLive, nameOf, uncommitted } from '../lib/core.mjs'
-import { runningSync } from '../lib/io.mjs'
+import { boardOf } from '../lib/board.mjs'
+import { configSync, runningSync } from '../lib/io.mjs'
 import { slash, winOf } from '../lib/path.mjs'
 import { applyHunks, keys, owner, parseDiff, statusPaths } from '../lib/lines.mjs'
 
@@ -15,7 +16,7 @@ const argv = process.argv.slice(2)
 const cmd = argv[0]
 const usage = `peers status | diff [--who [file...]] | commit -m "msg" [--whole] | check | ls | ready | claim <task> | close [-r reason] [--force] | files | view [match...] | tui [match...]
 Scope: the files this session edited (ledger kept by the peers mod). In a file a peer also edits, only your hunks
-(--whole takes the file as it is). Tasks: Backlog.md (\`backlog\` on PATH, board at BACKLOG_CWD).
+(--whole takes the file as it is). Tasks: Backlog.md by default (\`backlog\` on PATH), or Jira or your own module: README, Task boards.
 view: a live page (127.0.0.1:6421) of every session's uncommitted edits, each in its author's color; /peers-view shows it in a pane.
 tui: the same view full screen in any terminal (no agent session needed).
   match: only the repos it names. A path (., ../lander, ~/x) is that folder; a name is a repo name, part of one,
@@ -111,19 +112,23 @@ function mineDirty(l) {
   const d = dirtySet()
   return Object.keys(l.files).filter(f => d.has(f))
 }
-// Task board: Backlog.md. Its auto_commit records each edit in the board's git.
-// Windows: npm's backlog.cmd runs only through a shell, so each argument goes quoted for cmd.
-function backlog(args, opts) {
-  if (process.platform !== 'win32') return spawnSync('backlog', args, opts)
-  return spawnSync('backlog', args.map(a => `"${a.replace(/"/g, '""')}"`), { ...opts, shell: true, windowsHide: true })
-}
-function hasBoard() {
-  return backlog(['--version'], { stdio: 'ignore' }).status === 0
-}
-function board(args, quiet = true) {
-  const r = backlog(args, { encoding: 'utf8', stdio: quiet ? 'pipe' : 'inherit' })
-  if (r.status !== 0 && quiet) process.stderr.write(`backlog ${args.join(' ')}: ${(r.stderr || r.stdout || '').trim()}\n`)
-  return r.status === 0
+// Task board: lib/board.mjs, picked by `board` in ~/.claude/peers/config.json (Backlog.md by default).
+const config = configSync(homedir())
+// A board that will not load fails its own calls, never `peers status` or `diff`.
+const board = await boardOf(config, join(homedir(), '.claude', 'peers')).catch(e => {
+  const no = () => {
+    throw new Error(`board "${config.board}" did not load: ${e.message}`)
+  }
+  return { name: String(config.board), on: () => true, ready: no, claim: no, note: no, open: no, openHint: () => '', close: no }
+})
+// A board call that fails warns and never undoes the git work around it.
+const tryBoard = async (what, f) => {
+  try {
+    return await f()
+  } catch (e) {
+    process.stderr.write(`peers ${what}: ${e.message}\n`)
+    return null
+  }
 }
 // Line sets of a file: mine, and every live peer's that has not committed it yet.
 function lineSets(f, live) {
@@ -311,7 +316,7 @@ switch (cmd) {
     const n = l.commits.at(-1).files.length
     console.log(`${sha.slice(0, 7)} ${told} (${n} file${n === 1 ? '' : 's'})`)
     for (const x of notes) console.log(`note: ${x}`)
-    if (l.ticket && hasBoard()) board(['task', 'edit', l.ticket, '--append-notes', `${sha.slice(0, 7)} ${told}`])
+    if (l.ticket) await tryBoard('commit', () => board.note(l.ticket, `${sha.slice(0, 7)} ${told}`))
     break
   }
   case 'check': {
@@ -327,13 +332,17 @@ switch (cmd) {
     console.log(`peers check: ${wt} at ${git(['-C', wt, 'log', '-1', '--format=%h %s']).trim()}`)
     // Every run: a commit that moves the lockfile or a package.json needs fresh node_modules; a no-op otherwise.
     if (existsSync(join(wt, 'pnpm-lock.yaml'))) {
-      const i = spawnSync('pnpm', ['install', '--frozen-lockfile', '--prefer-offline'], { cwd: wt, stdio: 'inherit' })
+      const i = spawnSync('pnpm', ['install', '--frozen-lockfile', '--prefer-offline'], { cwd: wt, stdio: 'inherit', shell: process.platform === 'win32' })
       if (i.status !== 0) die(`peers check: pnpm install failed in ${wt}`)
     }
+    // `check` in the config (a shell line, as `npm test`), else the repo's gate script, else the commit's stat.
+    // The gate goes through bash: Windows runs no .sh by itself (Git for Windows brings bash).
     const gate = join(wt, 'scripts', 'gates.sh')
-    const r = existsSync(gate)
-      ? spawnSync(gate, ['changed'], { cwd: wt, stdio: 'inherit' })
-      : spawnSync('git', ['-C', wt, 'show', '--stat', '--oneline', 'HEAD'], { stdio: 'inherit' })
+    const r = config.check
+      ? spawnSync(config.check, { cwd: wt, stdio: 'inherit', shell: true })
+      : existsSync(gate)
+        ? spawnSync('bash', [gate, 'changed'], { cwd: wt, stdio: 'inherit' })
+        : spawnSync('git', ['-C', wt, 'show', '--stat', '--oneline', 'HEAD'], { stdio: 'inherit' })
     process.exit(r.status ?? 1)
   }
   case 'ls': {
@@ -351,14 +360,24 @@ switch (cmd) {
     break
   }
   case 'ready': {
-    if (!hasBoard()) die('peers ready: backlog not on PATH (npm i -g backlog.md)')
-    process.exit(board(['task', 'list', '-s', 'To Do', '--plain'], false) ? 0 : 1)
+    const out = await tryBoard('ready', () => board.ready())
+    if (out === null) process.exit(1)
+    console.log(String(out).trimEnd())
+    break
   }
   case 'claim': {
     const id = argv[1]
     if (!id) die('peers claim <task>')
-    if (hasBoard() && !board(['task', 'edit', id, '-s', 'In Progress'])) die(`peers claim: no task ${id}`)
+    let got
+    try {
+      got = await board.claim(id)
+    } catch (e) {
+      die(`peers claim: no task ${id} (${e.message})`)
+    }
     l.ticket = id
+    // The title travels in the ledger: the views show it without asking the board.
+    if (got?.title) l.title = got.title
+    else delete l.title
     save(l)
     console.log(`claimed ${id}`)
     break
@@ -368,17 +387,14 @@ switch (cmd) {
     const i = argv.indexOf('-r')
     const last = l.commits.at(-1)
     const reason = (i > 0 ? argv[i + 1] : 'done') + (last ? ` (${last.sha.slice(0, 7)})` : '')
-    // Big tasks carry acceptance criteria and a DoD per phase: every item is ticked before close.
-    if (hasBoard() && !argv.includes('--force')) {
-      const view = backlog(['task', 'view', l.ticket, '--plain'], { encoding: 'utf8' }).stdout ?? ''
-      const open = view.split('\n').filter(x => /^\s*- \[ \] #\d+/.test(x))
-      if (open.length)
-        die(`peers close: ${l.ticket} has ${open.length} unchecked item(s):\n${open.join('\n')}\nTick each: backlog task edit ${l.ticket} --check-ac <n> | --check-dod <n>. --force closes anyway.`)
+    if (!argv.includes('--force')) {
+      const open = (await tryBoard('close', () => board.open(l.ticket))) ?? []
+      if (open.length) die(`peers close: ${l.ticket} has ${open.length} unchecked item(s):\n${open.join('\n')}\n${board.openHint(l.ticket)} --force closes anyway.`)
     }
-    // Done stays in backlog/tasks/, so the board's Done column lists it. The archive is for dropped tasks.
-    if (hasBoard()) board(['task', 'edit', l.ticket, '-s', 'Done', '--final-summary', reason])
+    if ((await tryBoard('close', () => board.close(l.ticket, reason))) === null && board.on()) die(`peers close: ${l.ticket} stays bound; fix the board error, then run it again.`)
     console.log(`closed ${l.ticket}: ${reason}`)
     delete l.ticket
+    delete l.title
     save(l)
     break
   }

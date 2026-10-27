@@ -24,6 +24,8 @@ type Ledger = {
   session: string
   root: string
   ticket?: string
+  // The board's title for ticket, kept by `peers claim`.
+  title?: string
   started: number
   updated: number
   ended?: number

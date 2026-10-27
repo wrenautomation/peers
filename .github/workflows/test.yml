@@ -16,3 +16,4 @@ jobs:
       - run: git config --global user.email t@t && git config --global user.name t
       - run: node lib/core.test.mjs
       - run: node lib/tui.test.mjs
+      - run: node lib/board.test.mjs
