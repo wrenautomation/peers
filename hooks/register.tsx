@@ -1,12 +1,12 @@
 import { atom, read, update } from 'claude-code'
 import type { Register, RenderChildren, RenderElement } from 'claude-code'
 import type { Peer, ViewBody, ViewFile, ViewFocus, ViewFold, ViewIndex, ViewLine, ViewRepo, ViewSession } from '../types'
-import { HINT, scan } from '../lib/guard.mjs'
-import { delta, merge, statusPaths, unclaimed, yields } from '../lib/lines.mjs'
+import { core, dirOf, nameOf, peerLinesLost, quote } from '../lib/core.mjs'
+import { delta } from '../lib/lines.mjs'
 
 // One checkout, many sessions. Every session keeps its own ledger file:
 //   ~/.claude/peers/<encodeURIComponent(repo root)>/<session id>.json
-// The mod writes it from tool calls. `peers` (bin/peers.mjs) reads it for
+// The mod writes it from tool calls, through lib/core.mjs (the same code `peers hook` runs for other agents). `peers` (bin/peers.mjs) reads it for
 // status, diff, commit, check, claim and close. Nothing here spends a model
 // token unless a peer touched the exact file the model is about to use.
 
@@ -29,14 +29,7 @@ type Ledger = {
   commits: Commit[]
 }
 
-const LIVE_MS = 12 * 60 * 60 * 1000
 const EDIT_TOOLS = ['Edit', 'Write', 'NotebookEdit'] as const
-const SNAPSHOT_MAX = 512 * 1024
-// mtime and clock skew a Bash window allows.
-const SLACK_MS = 2000
-const EDITS_MAX = 20
-const ABS_PATH = /(?:^|[\s='"])(\/[^\s'"`;|&>]+)/g
-
 const peersAtom = atom({ plugin: 'peers', key: 'peers' } as const, [] as Peer[])
 // The band: one compact line, or with [+] a row per peer.
 const wideAtom = atom({ plugin: 'peers', key: 'wide' } as const, false)
@@ -54,8 +47,6 @@ const lit = (n: RenderChildren): RenderChildren => {
 }
 const ringed = (Text: any, on: boolean, children: RenderChildren) => (on ? <Text color="suggestion">{lit(children)}</Text> : children)
 
-const nameOf = (l: { session: string; ticket?: string }) => l.ticket ?? `s-${l.session.slice(0, 4)}`
-
 const ago = (ms: number) => {
   const s = Math.max(1, Math.round(ms / 1000))
   if (s < 60) return `${s}s`
@@ -67,12 +58,22 @@ const ago = (ms: number) => {
 let home = ''
 let session = ''
 let cwdRoot: string | null = null
-const rootByDir = new Map<string, string | null>()
-const roots = new Set<string>()
 const seen = new Map<string, number>() // abs path -> when this session last read it
 const told = new Map<string, number>() // abs path -> peer `last` we already reported
 const text = new Map<string, { mtime: number; body: string }>() // abs path -> content at mtime, for Bash deltas
 const said = new Map<string, string>() // tool_use_id -> the line the model wrote before that call
+
+// The ledger and capture (lib/core.mjs), bound per call: `$` lasts one dispatch.
+let c: any = null
+const k = ($: any) =>
+  c({
+    read: (p: string) => $.fs.read(p),
+    write: (p: string, t: string) => $.fs.write(p, t),
+    list: (d: string) => $.fs.list(d),
+    stat: (p: string) => $.fs.stat(p),
+    run: (argv: string[], o: { timeoutMs: number }) => $.process.run(argv, o),
+    now: () => $.clock.now(),
+  })
 
 // An edit's title: the first sentence of what the model said before it, as plain text.
 const titleOf = (raw: string) => {
@@ -82,145 +83,18 @@ const titleOf = (raw: string) => {
   return first.replace(/[:.]\s*$/, '').slice(0, 120).trim()
 }
 
-const ledgerDir = (root: string) => `${home}/.claude/peers/${encodeURIComponent(root)}`
-const ownPath = (root: string) => `${ledgerDir(root)}/${session}.json`
-
-const dirOf = (p: string) => p.slice(0, p.lastIndexOf('/')) || '/'
-
-const rootOf = async ($: any, dir: string): Promise<string | null> => {
-  const hit = rootByDir.get(dir)
-  if (hit !== undefined) return hit
-  let root: string | null = null
-  try {
-    const r = await $.process.run(['git', '-C', dir, 'rev-parse', '--show-toplevel'], { timeoutMs: 5000 })
-    root = r.exitCode === 0 ? r.stdout.trim() : null
-  } catch {
-    root = null
-  }
-  rootByDir.set(dir, root)
-  if (root) roots.add(root)
-  return root
-}
-
 const absolute = async ($: any, p: string) => (p.startsWith('/') ? p : `${await $.session.cwd()}/${p}`)
-
-const readJson = async ($: any, path: string): Promise<Ledger | null> => {
-  try {
-    return JSON.parse(await $.fs.read(path)) as Ledger
-  } catch {
-    return null
-  }
-}
-
-const loadMine = async ($: any, root: string): Promise<Ledger> => {
-  const now = await $.clock.now()
-  return (
-    (await readJson($, ownPath(root))) ?? {
-      v: 1,
-      session,
-      root,
-      started: now,
-      updated: now,
-      files: {},
-      commits: [],
-    }
-  )
-}
-
-const saveMine = async ($: any, l: Ledger) => {
-  delete l.ended
-  l.updated = await $.clock.now()
-  await $.fs.write(ownPath(l.root), JSON.stringify(l))
-}
-
-const record = async ($: any, root: string, rels: string[], deltas = new Map<string, Delta>(), title = '', from?: number) => {
-  if (rels.length === 0) return
-  const l = await loadMine($, root)
-  const now = await $.clock.now()
-  for (const rel of rels) {
-    const e = (l.files[rel] ??= { first: now, last: now })
-    e.from = from ?? now
-    e.last = now
-    const d = deltas.get(rel)
-    if (d) {
-      e.added = merge(e.added, d.added)
-      e.removed = merge(e.removed, d.removed)
-      const k = [...d.added, ...d.removed].slice(0, 4)
-      if (title && k.length) e.edits = [...(e.edits ?? []), { at: now, t: title, k }].slice(-EDITS_MAX)
-    }
-  }
-  await saveMine($, l)
-}
-
-// A peer's edits to rel that no commit of theirs has taken yet.
-const uncommitted = (p: Ledger, rel: string) => {
-  const e = p.files[rel]
-  return !!e && !p.commits.some(c => c.at >= e.last && c.files.includes(rel))
-}
-
-const readText = async ($: any, abs: string): Promise<string | null> => {
-  try {
-    return await $.fs.read(abs)
-  } catch {
-    return null
-  }
-}
-
-const headText = async ($: any, root: string, rel: string) => {
-  try {
-    const r = await $.process.run(['git', '-C', root, 'show', `HEAD:${rel}`], { timeoutMs: 5000 })
-    return r.exitCode === 0 ? r.stdout : ''
-  } catch {
-    return ''
-  }
-}
-
-// Peer lines (uncommitted) among the lines an edit takes out of rel.
-const peerLinesLost = (peers: Ledger[], rel: string, removed: string[]) => {
-  const gone = new Set(removed)
-  const out: { peer: Ledger; lines: string[] }[] = []
-  for (const p of peers) {
-    if (!uncommitted(p, rel)) continue
-    const lines = (p.files[rel]?.added ?? []).filter(k => gone.has(k))
-    if (lines.length) out.push({ peer: p, lines })
-  }
-  return out
-}
-
-const quote = (lines: string[]) =>
-  lines
-    .slice(0, 3)
-    .map(x => `\`${x.trim().slice(0, 80)}\``)
-    .join(', ') + (lines.length > 3 ? ` and ${lines.length - 3} more` : '')
-
-const peersOf = async ($: any, root: string): Promise<Ledger[]> => {
-  let entries: { name: string; kind: string }[]
-  try {
-    entries = await $.fs.list(ledgerDir(root))
-  } catch {
-    return []
-  }
-  const now = await $.clock.now()
-  const out: Ledger[] = []
-  for (const e of entries) {
-    if (e.kind !== 'file' || !e.name.endsWith('.json') || e.name === `${session}.json`) continue
-    const l = await readJson($, `${ledgerDir(root)}/${e.name}`)
-    if (!l || (l.ended && l.updated - l.ended < 5000) || now - l.updated > LIVE_MS) continue
-    out.push(l)
-  }
-  return out
-}
 
 // One line, only when a peer touched this file after we last read it.
 const peerLine = async ($: any, abs: string, forEdit: boolean): Promise<string | null> => {
-  const root = await rootOf($, dirOf(abs))
+  const root = await k($).rootOf(dirOf(abs))
   if (!root || !abs.startsWith(root + '/')) return null
   const rel = abs.slice(root.length + 1)
   const since = Math.max(seen.get(abs) ?? 0, told.get(abs) ?? 0)
   const lines: string[] = []
   let newest = 0
   const now = await $.clock.now()
-  for (const p of await peersOf($, root)) {
+  for (const p of (await k($).peersOf(root)) as Ledger[]) {
     const e = p.files[rel]
     if (!e || e.last <= since) continue
     newest = Math.max(newest, e.last)
@@ -256,15 +130,15 @@ const colorRule = (sessions: { id: string; started?: number }[]) => {
 let mineStarted: { id: string; started: number }[] = []
 
 const refreshPeers = async ($: any) => {
-  const all = new Set<string>(roots)
+  const all = new Set<string>(k($).roots)
   if (cwdRoot) all.add(cwdRoot)
   const list: Peer[] = []
   const me: typeof mineStarted = []
   for (const root of all) {
-    const mine = await loadMine($, root)
+    const mine: Ledger = await k($).loadMine(root)
     if (Object.keys(mine.files).length) me.push({ id: session, started: mine.started })
     const tag = all.size > 1 ? `${root.slice(root.lastIndexOf('/') + 1)}:` : ''
-    for (const p of await peersOf($, root)) {
+    for (const p of (await k($).peersOf(root)) as Ledger[]) {
       const files = Object.keys(p.files)
       const sharedFiles = files.filter(f => mine.files[f])
       const shared = sharedFiles.length
@@ -280,32 +154,6 @@ const refreshPeers = async ($: any) => {
   mineStarted = me
   const cur = await read($, peersAtom)
   if (JSON.stringify(cur) !== JSON.stringify(list)) await update($, peersAtom, () => list)
-}
-
-// Dirty files in a repo with their mtimes: the Bash snapshot. Their content is
-// cached by mtime, so a Bash edit can be split into lines added and removed.
-const dirty = async ($: any, root: string): Promise<Map<string, number>> => {
-  const m = new Map<string, number>()
-  try {
-    const r = await $.process.run(['git', '-C', root, 'status', '--porcelain', '-z', '--untracked-files=all'], {
-      timeoutMs: 10000,
-    })
-    if (r.exitCode !== 0) return m
-    for (const rel of statusPaths(r.stdout)) {
-      const abs = `${root}/${rel}`
-      let mtime = 0
-      try {
-        const st = await $.fs.stat(abs)
-        mtime = st.mtimeMs
-        if (st.kind === 'file' && st.size <= SNAPSHOT_MAX && text.get(abs)?.mtime !== mtime) {
-          const body = await readText($, abs)
-          if (body !== null) text.set(abs, { mtime, body })
-        }
-      } catch {}
-      m.set(rel, mtime)
-    }
-  } catch {}
-  return m
 }
 
 // The /peers pane: the `peers view` server's file list and documents, in the terminal.
@@ -397,17 +245,15 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     home = (await $.env.get('HOME')) ?? ''
     session = await $.session.id()
-    cwdRoot = await rootOf($, e.cwd)
-    if (cwdRoot) {
-      const l = await loadMine($, cwdRoot)
-      await saveMine($, l)
-    }
+    c = core({ home, session })
+    cwdRoot = await k($).rootOf(e.cwd)
+    if (cwdRoot) await k($).saveMine(await k($).loadMine(cwdRoot))
     // A reload runs session.end, then session.start: this session's ledgers are live again.
     try {
       for (const d of await $.fs.list(`${home}/.claude/peers`)) {
         const path = `${home}/.claude/peers/${d.name}/${session}.json`
-        const l = await readJson($, path)
-        if (l?.ended) await saveMine($, l)
+        const l = await k($).readJson(path)
+        if (l?.ended) await k($).saveMine(l)
       }
     } catch {}
     // `peers` on PATH: the one install step beyond /plugin install.
@@ -498,8 +344,8 @@ export const register: Register = on => {
           for (const a of new Set(by)) groups.get(a)!.push(f)
         }
         const out: RenderChildren[] = []
-        // One edge: a 4-column gutter holds the caret, the author dots and ▸; names, paths and titles start after it.
-        const dots = (f: ViewFile) => (f.authors.length ? f.authors : [null]).slice(0, 3)
+        // One edge: a 2-column gutter holds the fold arrow; a session's name and its file paths are in its color.
+        // Other authors of a file follow it by name, each in their own color.
         for (const [a, files] of groups) {
           if (!files.length) continue
           const id = `s:${r.root}:${a}`
@@ -510,9 +356,8 @@ export const register: Register = on => {
           out.push(
             <Button key={id} plain onPress={flip(id)}>
               {ringed(Text, ring === id, [
-                <Text dimColor>{open ? '▾ ' : '▸ '}</Text>,
-                <Text color={col(a)}>● </Text>,
-                <Text bold>{a ? nameOf(a) : 'Unattributed'}</Text>,
+                <Text bold>{open ? '▼ ' : '▶ '}</Text>,
+                <Text bold color={col(a)}>{a ? nameOf(a) : 'Unattributed'}</Text>,
                 <Text dimColor>{` ${files.length} file${files.length === 1 ? '' : 's'}${num(adds, dels)}`}</Text>,
               ])}
             </Button>,
@@ -525,10 +370,10 @@ export const register: Register = on => {
             out.push(
               <Button key={`f:${a}:${r.root}/${f.rel}`} plain onPress={show({ root: r.root, rel: f.rel, mode: isDoc(f.rel) ? 'doc' : 'diff' })}>
                 {ringed(Text, ring === `f:${a}:${r.root}/${f.rel}`, [
-                  ' '.repeat(Math.max(0, 3 - dots(f).length)),
-                  ...dots(f).map(x => <Text color={col(x)}>●</Text>),
+                  '  ',
                   kindMark(kind, col(a)),
-                  <Text strikethrough={kind === 'delete'} dimColor={kind === 'delete'}>{f.rel}</Text>,
+                  <Text color={col(a)} strikethrough={kind === 'delete'} dimColor={kind === 'delete'}>{f.rel}</Text>,
+                  ...f.authors.filter(x => own(x) !== a).map(x => <Text color={col(x)}>{` ${nameOf(x)}`}</Text>),
                   <Text dimColor>{`${f.count ? ` ${f.count} new files` : ''}${num(cs.length ? cs.reduce((n, c) => n + c.adds, 0) : f.adds, cs.length ? cs.reduce((n, c) => n + c.dels, 0) : f.dels)} · ${ago(now - f.mtime)}`}</Text>,
                   fold.zoom < 3 && said.length ? <Text dimColor>{`  ${said.join(' · ')}`}</Text> : null,
                 ])}
@@ -538,8 +383,8 @@ export const register: Register = on => {
               for (const c of cs)
                 out.push(
                   <Text>
-                    <Text color={col(c.a)}>{'  ▸ '}</Text>
-                    <Text dimColor={!c.said}>{c.t || 'change'}</Text>
+                    {'    '}
+                    <Text color={col(c.a)} dimColor={!c.said}>{c.t || 'change'}</Text>
                     <Text dimColor>{`${num(c.adds, c.dels)} · L${c.line}`}</Text>
                   </Text>,
                 )
@@ -563,8 +408,7 @@ export const register: Register = on => {
           {people.map(s => (
             <Box flexDirection="column">
               <Text>
-                <Text color={col(s.id)}>{now - s.updated < 20000 ? '◉ ' : '● '}</Text>
-                <Text bold>{s.name}</Text>
+                <Text bold color={col(s.id)}>{s.name}</Text>
                 {s.title ? <Text dimColor>{` ${s.title}`}</Text> : null}
                 <Text dimColor>{` · ${ago(now - s.updated)}`}</Text>
               </Text>
@@ -586,7 +430,7 @@ export const register: Register = on => {
               <Text bold>Activity</Text>
               {feed.map(e => (
                 <Text>
-                  <Text color={col(e.a)}>● </Text>
+                  <Text color={col(e.a)}>{`${nameOf(e.a)} `}</Text>
                   <Text dimColor>{`${ago(now - e.at)} `}</Text>
                   {e.kind === 'commit' ? `commit ${e.sha ?? ''} ${e.t}` : e.t || 'Edited'}
                   <Text dimColor>{`  ${e.rels
@@ -643,9 +487,8 @@ export const register: Register = on => {
         room -= source.length
         rows.push(
           <Text>
-            <Text color={col(hunk.a)}>● </Text>
             <Text bold={hunk.said} dimColor={!hunk.said}>{hunk.t || hunk.at || `line ${hunk.new}`}</Text>
-            <Text dimColor>{hunk.a ? `  ${nameOf(hunk.a)}` : ''}</Text>
+            <Text color={col(hunk.a)}>{hunk.a ? `  ${nameOf(hunk.a)}` : ''}</Text>
           </Text>,
           <Code format="diff" path={focus.rel} source={source} />,
         )
@@ -664,7 +507,7 @@ export const register: Register = on => {
           {file ? kindMark(file.kind ?? 'edit', col(file.authors[0])) : null}
           <Text bold>{`${repo?.name ?? ''}/${focus.rel}`}</Text>
           {(file?.authors ?? []).map(a => (
-            <Text color={col(a)}>{`  ● ${nameOf(a)}`}</Text>
+            <Text color={col(a)}>{`  ${nameOf(a)}`}</Text>
           ))}
         </Text>
         <Text> </Text>
@@ -675,13 +518,7 @@ export const register: Register = on => {
   })
 
   on('session.end', async ($, e, next) => {
-    for (const root of roots) {
-      const l = await readJson($, ownPath(root))
-      if (l) {
-        l.ended = l.updated = await $.clock.now()
-        await $.fs.write(ownPath(root), JSON.stringify(l)) // not saveMine: it clears ended
-      }
-    }
+    await k($).end()
     return next(e)
   })
 
@@ -705,26 +542,22 @@ export const register: Register = on => {
   for (const tool of EDIT_TOOLS) {
     on('tool.call', { tool: tool as 'Edit' }, async ($, e: any, next) => {
       const abs = await absolute($, e.file_path ?? e.notebook_path ?? '')
-      const root = abs ? await rootOf($, dirOf(abs)) : null
-      const rel = root && abs.startsWith(root + '/') ? abs.slice(root.length + 1) : null
+      const at = await k($).locate(abs)
+      const root: string | null = at?.root ?? null
+      const rel: string | null = at?.rel ?? null
       let d: Delta | null = null
       if (tool === 'Edit') d = delta(e.old_string ?? '', e.new_string ?? '')
-      if (tool === 'Write') d = delta((await readText($, abs)) ?? '', e.content ?? '')
+      if (tool === 'Write') d = delta((await k($).readText(abs)) ?? '', e.content ?? '')
 
       // A Write replaces the whole file: it must not drop a peer's uncommitted lines.
       let lost: { peer: Ledger; lines: string[] }[] = []
       if (root && rel && d) {
-        const peers = await peersOf($, root)
-        lost = peerLinesLost(peers, rel, d.removed)
+        const peers = await k($).peersOf(root)
         if (tool === 'Write') {
-          const blind = peers.filter(p => uncommitted(p, rel) && !p.files[rel]?.added)
-          if (lost.length || blind.length) {
-            const who = [...lost.map(x => `${nameOf(x.peer)} (${quote(x.lines)})`), ...blind.map(nameOf)]
-            return {
-              deny: `peers: this Write drops uncommitted lines of ${who.join(', ')} in ${rel}. Re-read the file and change only your part with Edit.`,
-            }
-          }
+          const deny = await k($).writeDeny(root, rel, d, peers)
+          if (deny) return { deny }
         }
+        lost = peerLinesLost(peers, rel, d.removed)
       }
 
       const line = abs ? await peerLine($, abs, true) : null
@@ -732,7 +565,7 @@ export const register: Register = on => {
       if (rel && root && r && r.deny === undefined && !r.isError) {
         const t = titleOf(said.get(e.tool_use_id ?? '') ?? '')
         said.delete(e.tool_use_id ?? '')
-        await record($, root, [rel], d ? new Map([[rel, d]]) : undefined, t)
+        await k($).record(root, [rel], d ? new Map([[rel, d]]) : undefined, t)
         seen.set(abs, await $.clock.now())
       }
       const warn = lost.length
@@ -752,104 +585,22 @@ export const register: Register = on => {
 
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     const cmd = e.command
-    // Roots this command may touch: the session's, every edited file's, any absolute path in it.
-    const cmdRoots = new Set<string>(roots)
-    if (cwdRoot) cmdRoots.add(cwdRoot)
-    let n = 0
-    for (const m of cmd.matchAll(ABS_PATH)) {
-      if (n++ >= 3) break
-      const p = (m[1] ?? '').replace(/\/$/, '')
-      const r = (await rootOf($, p)) ?? (await rootOf($, dirOf(p)))
-      if (r) cmdRoots.add(r)
-    }
-
-    const before = new Map<string, Map<string, number>>()
-    for (const root of cmdRoots) before.set(root, await dirty($, root))
-    const peerDirty = new Map<string, { rel: string; peer: Ledger }[]>()
-    for (const [root, was] of before) {
-      const list: { rel: string; peer: Ledger }[] = []
-      for (const p of await peersOf($, root)) for (const rel of Object.keys(p.files)) if (was.has(rel) && uncommitted(p, rel)) list.push({ rel, peer: p })
-      peerDirty.set(root, list)
-    }
-
-    // Guard: staging, discards, branch switches and formatters that reach a peer's uncommitted files.
     const cwd = await $.session.cwd()
-    for (const hit of scan(cmd)) {
-      const resolve = (p: string, from: string) => (p.startsWith('/') ? p : p === '~' || p.startsWith('~/') ? home + p.slice(1) : `${from}/${p}`).replace(/\/(\.\/?)?$/, '').replace(/\/\.\//g, '/')
-      const base = resolve(hit.dir ?? '.', hit.cwd ? resolve(hit.cwd, cwd) : cwd)
-      let targets: string[] | null = hit.targets
-      // `git checkout X` with no `--`: a branch unless X is a path.
-      if (hit.branchy) {
-        try {
-          await $.fs.stat(resolve(hit.branchy, base))
-        } catch {
-          targets = null
-        }
-      }
-      // A `$VAR` in the directory hides which repo it is: count every repo, whole.
-      const blind = /[$`]|__q__/.test(`${hit.dir ?? ''}${hit.cwd ?? ''}`)
-      if (blind) targets = null
-      for (const [root, list] of peerDirty) {
-        // Whole-tree ops reach the repo they run in (or every repo below it); named paths say where they land.
-        if (!blind && targets === null && !(base === root || base.startsWith(root + '/') || root.startsWith(base + '/'))) continue
-        const rels = targets?.map(t => resolve(t, base)).map(a => (a === root ? '' : a.startsWith(root + '/') ? a.slice(root.length + 1) : null))
-        const hits = list.filter(({ rel }) => !rels || rels.some(t => t !== null && (t === '' || rel === t || rel.startsWith(t + '/'))))
-        if (hits.length) {
-          const files = [...new Set(hits.map(x => `${x.rel} (${nameOf(x.peer)})`))]
-          return { deny: `peers: this command reaches uncommitted peer files in ${root}: ${files.join(', ')}. ${HINT[hit.rule as keyof typeof HINT]} See whose hunks are whose: peers diff --who <file>.` }
-        }
-      }
-    }
+    const list: string[] = await k($).commandRoots(cmd, cwd)
+    if (cwdRoot && !list.includes(cwdRoot)) list.push(cwdRoot)
+    const snap = await k($).before(list)
+    const deny = await k($).guard(cmd, cwd, snap)
+    if (deny) return { deny }
 
-    const t0 = await $.clock.now()
+    snap.at = await $.clock.now()
     const r: any = await next(e)
     if (!r || r.deny !== undefined || r.isReadOnly) return r
-
-    const hitPeers: string[] = []
-    for (const [root, was] of before) {
-      const now = await dirty($, root)
-      let touched: string[] = []
-      const t1 = await $.clock.now()
-      const peersNow = await peersOf($, root)
-      for (const [rel, mtime] of now) {
-        const old = was.get(rel)
-        if (old !== undefined && old === mtime) continue
-        // Newly dirty but not written while we ran: HEAD or the index moved (reset, amend, restore --staged).
-        if (old === undefined && mtime > 0 && mtime < t0 - SLACK_MS) continue
-        // A peer's tighter action spans the change: theirs, even inside our window.
-        if (mtime > 0 && yields(rel, mtime, { from: t0, to: t1 }, peersNow)) continue
-        touched.push(rel)
-      }
-      // A file that left the dirty list was committed or reverted, not edited. A deleted
-      // tracked file stays dirty (mtime 0), so the loop above has it.
-      if (!touched.length) continue
-      const deltas = new Map<string, Delta>()
-      for (const rel of touched) {
-        const abs = `${root}/${rel}`
-        const cached = text.get(abs)
-        const old = was.has(rel) ? (cached && cached.mtime === was.get(rel) ? cached.body : null) : await headText($, root, rel)
-        const cur = now.has(rel) ? ((await readText($, abs)) ?? '') : await headText($, root, rel)
-        if (old !== null) deltas.set(rel, delta(old, cur))
-      }
-      // A long command (tests, a push) runs while peers edit: a file a peer recorded since it
-      // started keeps only the lines that are not the peer's, and is not ours if none are left.
-      const during = peersNow.filter(p => p.updated >= t0)
-      touched = touched.filter(rel => {
-        if (!during.length) return true
-        const kept = unclaimed(deltas.get(rel), during, rel, t0)
-        if (kept && deltas.has(rel)) deltas.set(rel, kept)
-        return kept !== null
-      })
-      if (!touched.length) continue
-      await record($, root, touched, deltas, titleOf(e.description ?? '') || titleOf(said.get(e.tool_use_id ?? '') ?? ''), t0)
-      const theirs = new Set(touched)
-      for (const { rel, peer } of peerDirty.get(root) ?? []) if (theirs.has(rel)) hitPeers.push(`${rel} (${nameOf(peer)})`)
-    }
+    const hitPeers: string[] = await k($).after(snap, titleOf(e.description ?? '') || titleOf(said.get(e.tool_use_id ?? '') ?? ''))
     // `peers claim` and `peers close` change the ticket in the ledger; refresh the band.
     said.delete(e.tool_use_id ?? '')
     if (/\b(mine|peers) (claim|close)\b/.test(cmd)) await refreshPeers($)
     const warn = hitPeers.length
-      ? `peers: this command changed uncommitted peer files: ${[...new Set(hitPeers)].join(', ')}. Check them with git diff and put back any of their lines it broke.`
+      ? `peers: this command changed uncommitted peer files: ${hitPeers.join(', ')}. Check them with git diff and put back any of their lines it broke.`
       : null
     return withContext('', r, warn)
   }).catch(($, e, next) => next(e))

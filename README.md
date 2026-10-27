@@ -1,6 +1,6 @@
 # peers
 
-Run many Claude Code sessions in one checkout. No worktrees, no merges.
+Run many agent sessions in one checkout: Claude Code, Codex, Cursor. No worktrees, no merges.
 
 Each session gets a ledger of the files it edited. The ledger drives four things:
 
@@ -43,6 +43,30 @@ claude plugin install peers --marketplace wrenautomation/peers
 
 Answer `y` to add the marketplace, then pick the user scope. The next session links `peers` into `~/.local/bin`. Needs Claude Code 2.1.287 or newer.
 
+## Other agents
+
+Codex and Cursor use hooks. Install the plugin once (it links `peers`), then add the hooks:
+
+```
+peers install codex            # ~/.codex/hooks.json
+peers install cursor           # ~/.cursor/hooks.json
+peers install cursor --project # <repo>/.cursor/hooks.json
+peers install codex --uninstall
+```
+
+The install merges into the config and keeps your own hooks. Each hook event runs `peers hook <agent>`. It records edits and shell commands, denies the same guarded commands, and tells the agent when a command changed a peer's file. Their sessions show as `codex-xxxx` and `cursor-xxxx` in the band, the pane and `peers view`. `peers status|diff|commit` in the agent's shell find its session through the agent's process.
+
+Claude Code needs none of this: its mod calls the same code in process (`lib/core.mjs`).
+
+Differences from Claude Code:
+
+- No read awareness line and no prompt rule. Put the rule in `AGENTS.md` or a Cursor rule.
+- An Edit that drops a peer's lines is not stopped. A whole-file Write in Cursor is.
+- A tool call whose pre-tool hook did not run (a timeout, a crash) records nothing.
+- A `peers` command finds the session through the agent's process. Under a Claude Code shell, `CLAUDE_CODE_SESSION_ID` wins. Set `PEERS_SESSION` to choose.
+
+Tested live on cursor-agent 2026.09.18. Codex is tested with fixtures from its hook docs only.
+
 ## Use
 
 ```
@@ -68,7 +92,7 @@ peers view                  # live page of every session's edits
 - Activity: titled edits and commits (with their subjects), newest first.
 - Live: a changed file and its new lines pulse in place; scroll and folds stay. The server starts on the first call and stops 15 minutes after the last page closes.
 
-`/peers-view` in Claude Code (`/peers` is a built-in name) opens the same view in a pane, also mid-turn; Escape or `/peers-view` again closes it. It shows the legend, the zoom levels (`1` `2` `3`), files by session with their titles, and the activity. Each file shows its kind: `A` added, `M` edited, `D` deleted, in the page's colors. Enter on a file opens it; `d` and `f` switch document and diff, `b` goes back. The diff is Claude Code's own (its highlighter and colors), headed by the owner's change title. `ctrl+x ←` widens the pane. The band above the prompt opens it too.
+`/peers-view` in Claude Code (`/peers` is a built-in name) opens the same view in a pane, also mid-turn; Escape or `/peers-view` again closes it. It shows the legend, the zoom levels (`1` `2` `3`), files by session with their titles, and the activity. Each file shows its kind: `A` added, `M` edited, `D` deleted, in the page's colors. Enter on a file opens it; `d` and `f` switch document and diff, `b` goes back. The diff is Claude Code's own (its highlighter and colors), headed by the owner's change title. `ctrl+x ←` widens the pane. The band above the prompt opens it too. A press on one peer in the band opens the pane on that session. Authors show by name in their color; ▶ and ▼ fold a group.
 
 Up and down walk the rows with this in `~/.claude/keybindings.json` (by default they scroll, and Tab walks):
 
@@ -82,7 +106,9 @@ Edit, then commit, in separate commands: the ledger records a Bash edit after th
 
 ## Where the state lives
 
-`~/.claude/peers/<encoded repo root>/<session id>.json`. One file per session. No locks. A session file older than 12 hours, or marked ended, is ignored.
+`~/.claude/peers/<encoded repo root>/<session id>.json`. One file per session. No locks. A session file older than 12 hours, or marked ended, is ignored. Codex and Cursor ids carry a `codex_` or `cursor_` prefix.
+
+`~/.claude/peers-run/` holds hook state for the other agents: `snap/` (a pre-tool snapshot until its post-tool event, swept after 1 hour) and `agents/<pid>.json` (agent process to session, swept after 48 hours).
 
 ## Hunks
 

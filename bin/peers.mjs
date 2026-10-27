@@ -1,10 +1,12 @@
 #!/usr/bin/env node
-// peers: git scoped to the files this Claude Code session touched.
-// Ledger: ~/.claude/peers/<encodeURIComponent(repo root)>/<session>.json, written by the peers mod.
+// peers: git scoped to the files this agent session touched.
+// Ledger: ~/.claude/peers/<encodeURIComponent(repo root)>/<session>.json, written by the peers mod (Claude Code)
+// or by `peers hook <agent>` (Codex, Cursor), both through lib/core.mjs.
 import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
+import { nameOf } from '../lib/core.mjs'
 import { applyHunks, keys, owner, parseDiff, statusPaths } from '../lib/lines.mjs'
 
 const argv = process.argv.slice(2)
@@ -14,16 +16,40 @@ Scope: the files this session edited (ledger kept by the peers mod). In a file a
 (--whole takes the file as it is). Tasks: Backlog.md (\`backlog\` on PATH, board at BACKLOG_CWD).
 view: a live page (127.0.0.1:6421) of every session's uncommitted edits, each in its author's color; /peers-view shows it in a pane.
   view --install [--host <public host>] keeps it up under launchd; view --uninstall stops that.
+Other agents: peers install codex|cursor [--project] [--uninstall] adds the hooks; the agent runs peers hook <agent>.
 Env: PEERS_SESSION overrides the session id.`
 
-const session = process.env.PEERS_SESSION || process.env.CLAUDE_CODE_SESSION_ID
 if (!cmd || cmd === '-h' || cmd === '--help') die(usage, 0)
+if (cmd === 'hook') {
+  const { handle } = await import('../lib/hook.mjs')
+  let input = ''
+  for await (const chunk of process.stdin) input += chunk
+  // A hook must never stop the agent: any failure answers "go on".
+  let out = {}
+  try {
+    out = (await handle(argv[1], JSON.parse(input), { home: homedir() })).out
+  } catch (err) {
+    process.stderr.write(`peers hook: ${err?.message ?? err}\n`)
+  }
+  process.stdout.write(JSON.stringify(out) + '\n')
+  process.exit(0)
+}
+if (cmd === 'install') {
+  const { AGENTS, install } = await import('../lib/hook.mjs')
+  if (!AGENTS[argv[1]]) die(`peers install: one of ${Object.keys(AGENTS).join(', ')}`)
+  let root
+  if (argv.includes('--project')) root = execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' }).trim()
+  const path = install(argv[1], { home: homedir(), root, remove: argv.includes('--uninstall') })
+  console.log(`${argv.includes('--uninstall') ? 'removed from' : 'hooks in'} ${path}`)
+  process.exit(0)
+}
+const session = process.env.PEERS_SESSION || process.env.CLAUDE_CODE_SESSION_ID || (await import('../lib/hook.mjs')).findSession(homedir())
 if (cmd === 'view') {
   await (await import('../lib/view.mjs')).view()
   if (!argv.includes('--serve')) process.exit(0)
   await new Promise(() => {}) // the server runs until stopped
 }
-if (!session) die('peers: no session id. Run it from a Claude Code session, or set PEERS_SESSION.')
+if (!session) die('peers: no session id. Run it from an agent session (Claude Code, or one with peers install), or set PEERS_SESSION.')
 
 const root = (() => {
   try {
@@ -70,9 +96,6 @@ function peers() {
       }
     })
     .filter(l => l && !(l.ended && l.updated - l.ended < 5000) && now - l.updated < 12 * 3600 * 1000)
-}
-function nameOf(l) {
-  return l.ticket ?? `s-${l.session.slice(0, 4)}`
 }
 function dirtySet() {
   return new Set(statusPaths(git(['status', '--porcelain', '-z', '--untracked-files=all'])))

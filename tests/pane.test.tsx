@@ -83,6 +83,11 @@ test('the pane lists files and opens one as a document and a diff', async ($, on
     // Zoom 2: the file under each session that owns a change in it, with the said title.
     expect(await ui.find({ key: `f:${S2}:/r/lab/plan.md` })).toBeDefined()
     expect((await ui.find({ key: `f:${S1}:/r/lab/plan.md` }))?.text).toContain('Move the launch to Monday')
+    // Authors by name in their color, no dots; the fold arrow is the bold full triangle.
+    const group = JSON.stringify(await ui.find({ key: `s:/r/lab:${S1}` }))
+    expect(group).toContain('▼')
+    expect(group).not.toContain('●')
+    expect((await ui.find({ key: `f:${S1}:/r/lab/plan.md` }))?.text).toContain('s-bbbb')
     // Zoom 1 folds the files away; a press on a group opens that one group.
     await ui.press({ key: 'zoom1' })
     expect(await ui.find({ key: `f:${S1}:/r/lab/plan.md` })).toBeUndefined()
