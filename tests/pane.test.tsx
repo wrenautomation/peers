@@ -89,27 +89,31 @@ test('the pane lists files and opens one as a document and a diff', async ($, on
   for (const surface of ['terminal', 'mobile'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
     expect((await ui.find({ type: 'Text', text: /launch plan/ }))?.text).toContain('WA-901')
-    // Zoom 2: the file under each session that owns a change in it, with the said title.
+    // Sessions open: the file under each session that owns a change in it, with the said title.
     expect(await ui.find({ key: `f:${S2}:/r/lab/plan.md` })).toBeDefined()
-    expect((await ui.find({ key: `f:${S1}:/r/lab/plan.md` }))?.text).toContain('Move the launch to Monday')
+    expect((await ui.find({ key: `row:f:${S1}:/r/lab/plan.md` }))?.text).toContain('Move the launch to Monday')
+    // The repo reads as a folder.
+    expect(await ui.find({ type: 'Text', text: 'lab/' })).toBeDefined()
     // Authors by name in their color, no dots; the fold arrow is the bold full triangle.
-    const group = JSON.stringify(await ui.find({ key: `s:/r/lab:${S1}` }))
+    const group = JSON.stringify(await ui.find({ key: `row:s:/r/lab:${S1}` }))
     expect(group).toContain('▼')
     expect(group).not.toContain('●')
-    expect((await ui.find({ key: `f:${S1}:/r/lab/plan.md` }))?.text).toContain('cc-bbbb')
+    expect((await ui.find({ key: `row:f:${S1}:/r/lab/plan.md` }))?.text).toContain('cc-bbbb')
   // A session's row shows what it is on, cut to 2 rows of the pane's body.
   const row = (await ui.find({ type: 'Text', text: /Fix the login page/ }))?.text ?? ''
   expect(row).toContain('cc-bbbb')
   expect(row).toContain('Fix the login page')
     // All its work committed: the session still shows, with its commit.
-    expect((await ui.find({ key: `s:/r/lab:${S3}` }))?.text).toContain('nothing open')
+    expect((await ui.find({ key: `row:s:/r/lab:${S3}` }))?.text).toContain('nothing open')
     expect((await ui.find({ type: 'Text', text: /Add the comment flow/ }))?.text).toContain('abcdef12  Add the comment flow  13 files')
-    // Zoom 1 folds the files away; a press on a group opens that one group.
-    await ui.press({ key: 'zoom1' })
+    // A press on a session's name folds its files away; a second press opens them.
+    await ui.press({ key: `s:/r/lab:${S1}` })
     expect(await ui.find({ key: `f:${S1}:/r/lab/plan.md` })).toBeUndefined()
-    await ui.press({ key: 'zoom3' })
-    expect((await ui.find({ type: 'Text', text: /Launch plan/ }))?.text).toContain('+2')
-    await ui.press({ key: 'zoom2' })
+    await ui.press({ key: `s:/r/lab:${S1}` })
+    // ? shows the keys; a second ? closes them.
+    await ui.press({ key: 'help' })
+    expect(await ui.find({ type: 'Text', text: /open a file, or fold a session/ })).toBeDefined()
+    await ui.press({ key: 'help' })
     await ui.press({ key: `f:${S1}:/r/lab/plan.md` })
     expect((await ui.find({ type: 'Text', text: /We ship on/ }))?.text).toBe('We ship on FridayMonday.')
     expect((await ui.find({ type: 'Text', text: /Record the demo/ }))?.text).toBe('- Record the demo')

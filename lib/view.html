@@ -14,7 +14,10 @@
   --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1d1f; --mute: #6e6e73; --faint: #76767c; --line: #e4e1db; --code: #f2f0eb; --hover: #efede8;
   --a0: #2f6fdf; --a1: #d9480f; --a2: #2b8a3e; --a3: #ae3ec9; --a4: #c2255c; --a5: #1098ad; --a6: #e67700; --a7: #5f3dc4;
   --nobody: #8e8e93; --tint: 13%; --add: #2b8a3e; --del: #c92a2a;
-  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  /* One type scale: 12 for meta, 13 for the UI, 14 for body text; weights 400, 500, 600 only. */
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  --mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+  --fs-meta: 12px; --fs-ui: 13px; --fs-body: 14px;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -26,7 +29,7 @@
   }
 }
 * { box-sizing: border-box; }
-html, body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Inter", sans-serif; }
+html, body { margin: 0; background: var(--bg); color: var(--ink); font: var(--fs-ui)/1.5 var(--sans); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; }
 button { font: inherit; color: inherit; }
 .mono { font-family: var(--mono); }
 .mute { color: var(--mute); }
@@ -34,14 +37,15 @@ button { font: inherit; color: inherit; }
 
 /* Shell: top bar, then tree | main | feed. */
 .top { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 12px; padding: 8px 16px; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
-.top h1 { font-size: 15px; margin: 0; display: flex; align-items: center; gap: 8px; }
-.live { width: 8px; height: 8px; border-radius: 50%; background: var(--nobody); }
-.live.on { background: var(--add); box-shadow: 0 0 0 3px color-mix(in srgb, var(--add) 25%, transparent); }
+.top h1 { font-size: var(--fs-body); font-weight: 600; margin: 0; display: flex; align-items: baseline; gap: 10px; }
+.live { font-size: var(--fs-meta); font-weight: 400; color: var(--faint); }
+.live.on { color: var(--add); }
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; background: var(--panel); }
 .seg button { border: 0; background: none; padding: 3px 10px; cursor: pointer; color: var(--mute); }
 .seg button + button { border-left: 1px solid var(--line); }
-.seg button.on { color: var(--ink); background: var(--hover); font-weight: 600; }
-.seg kbd, .find kbd { font: 11px var(--mono); color: var(--faint); margin-right: 4px; }
+.seg button.on { color: var(--ink); background: var(--hover); font-weight: 500; }
+.find kbd, .keys kbd, #help kbd { font: var(--fs-meta) var(--mono); color: var(--faint); }
+.keys { border: 1px solid var(--line); background: var(--panel); border-radius: 7px; padding: 3px 9px; cursor: pointer; color: var(--mute); }
 .find { margin-left: auto; display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: var(--panel); border-radius: 7px; padding: 3px 10px; cursor: pointer; color: var(--mute); min-width: 200px; }
 .app { display: grid; grid-template-columns: 300px 5px minmax(0, 1fr) 5px 300px; min-height: calc(100vh - 45px); }
 /* A sash between columns, as VS Code's: a hairline that thickens to the accent on hover and drag. */
@@ -51,48 +55,49 @@ button { font: inherit; color: inherit; }
 .left { display: flex; flex-direction: column; overflow: hidden; }
 .right { padding: 12px 12px 40px; }
 main { padding: 16px 24px 80px; min-width: 0; }
-.label { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--mute); margin: 4px 0 6px; display: flex; align-items: center; gap: 8px; }
+.label { font-size: var(--fs-meta); font-weight: 600; color: var(--mute); margin: 4px 0 8px; display: flex; align-items: center; gap: 8px; }
 
 /* Legend: one chip per session. */
-#legend { padding: 12px 12px 6px; border-bottom: 1px solid var(--line); max-height: 45%; overflow: auto; flex: none; }
-.who { display: grid; grid-template-columns: 12px 1fr auto; gap: 2px 8px; padding: 6px 8px; border-radius: 7px; cursor: pointer; border: 1px solid transparent; }
-.who:hover { background: var(--hover); }
-.who.on { border-color: var(--c); background: color-mix(in srgb, var(--c) 8%, transparent); }
+/* The session's color lives in its name only; a writing session's age reads "now". */
+#legend { padding: 14px 12px 10px; border-bottom: 1px solid var(--line); max-height: 45%; overflow: auto; flex: none; }
+.who { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 6px 8px; border-radius: 6px; cursor: pointer; border: 1px solid transparent; }
+.who.on { border-color: color-mix(in srgb, var(--c) 50%, transparent); }
 .who.off { opacity: .45; }
-.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c); margin-top: 5px; }
-.dot.now { animation: ring 1.6s ease-out infinite; }
-@keyframes ring { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--c) 60%, transparent); } 100% { box-shadow: 0 0 0 7px transparent; } }
-.who b { font-weight: 600; }
-.who .doing { grid-column: 2 / 4; font-size: 12.5px; color: var(--mute); overflow-wrap: anywhere; }
-.who .meta { font-size: 12px; color: var(--faint); white-space: nowrap; }
+.who b { font-weight: 600; color: var(--c); }
+.who:hover b { text-decoration: underline; text-underline-offset: 3px; }
+.who .doing { grid-column: 1 / 3; font-size: var(--fs-meta); color: var(--mute); overflow-wrap: anywhere; }
+.who .meta { font-size: var(--fs-meta); color: var(--faint); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.who .meta.now { color: var(--add); }
 
 /* Tree (wunderbaum) themed from our tokens. */
-.treebar { padding: 8px 12px 4px; flex: none; }
-.treebar label { font-size: 12px; color: var(--mute); display: flex; gap: 6px; align-items: center; cursor: pointer; }
-#tree { flex: 1; min-height: 0; }
-div.wunderbaum { --wb-font-stack: -apple-system, BlinkMacSystemFont, "Inter", sans-serif; --wb-node-text-color: var(--ink); --wb-background-color: var(--panel); --wb-alternate-row-color: var(--panel); --wb-alternate-row-color-hover: var(--hover); --wb-hover-color: var(--hover); --wb-active-color: color-mix(in srgb, var(--a0) 14%, transparent); --wb-active-hover-color: color-mix(in srgb, var(--a0) 20%, transparent); --wb-active-border-color: transparent; --wb-active-hover-border-color: transparent; --wb-focus-border-color: transparent; --wb-border-color: var(--line); --wb-dim-color: var(--faint); --wb-active-color-grayscale: var(--hover); --wb-active-border-color-grayscale: transparent; --wb-active-hover-color-grayscale: var(--hover); --wb-row-outer-height: 24px; --wb-row-inner-height: 22px; border: 0; font-size: 13px; height: 100%; }
+.treebar { padding: 12px 14px 6px; flex: none; }
+.treebar label { font-size: var(--fs-meta); color: var(--mute); display: flex; gap: 6px; align-items: center; cursor: pointer; }
+#tree { flex: 1; min-height: 0; padding: 0 6px 24px; }
+/* Unchanged files sit back in the muted color; a change reads in ink, so no marker is needed to find it. */
+div.wunderbaum { --wb-font-stack: var(--sans); --wb-node-text-color: var(--mute); --wb-background-color: var(--panel); --wb-alternate-row-color: var(--panel); --wb-alternate-row-color-hover: var(--hover); --wb-hover-color: var(--hover); --wb-active-color: color-mix(in srgb, var(--a0) 14%, transparent); --wb-active-hover-color: color-mix(in srgb, var(--a0) 20%, transparent); --wb-active-border-color: transparent; --wb-active-hover-border-color: transparent; --wb-focus-border-color: transparent; --wb-border-color: var(--line); --wb-dim-color: var(--faint); --wb-active-color-grayscale: var(--hover); --wb-active-border-color-grayscale: transparent; --wb-active-hover-color-grayscale: var(--hover); --wb-row-outer-height: 26px; --wb-row-inner-height: 24px; --wb-icon-outer-width: 18px; border: 0; font-size: var(--fs-ui); height: 100%; }
+div.wunderbaum .wb-row { border-radius: 5px; }
+div.wunderbaum .wb-row.repo span.wb-title { color: var(--ink); font-weight: 600; }
+div.wunderbaum span.wb-title { padding-left: 4px; }
 div.wunderbaum span.wb-node { display: flex; align-items: center; min-width: 0; }
 div.wunderbaum span.wb-node > i { flex: none; }
 div.wunderbaum span.wb-title { flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }
 div.wunderbaum i.wb-icon, div.wunderbaum i.wb-expander { color: var(--faint); }
-.tn { margin-left: auto; padding: 0 4px 0 6px; display: flex; gap: 6px; align-items: center; font: 11px var(--mono); flex: none; }
+.tn { margin-left: auto; padding: 0 8px 0 10px; display: flex; gap: 8px; align-items: center; font: var(--fs-meta) var(--mono); font-variant-numeric: tabular-nums; flex: none; }
 .tn .ad { color: var(--add); } .tn .de { color: var(--del); }
-.dots { display: inline-flex; gap: 3px; }
-.dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--c); display: inline-block; }
 .wb-row.fresh { animation: flash 2.4s ease-out; }
-div.wunderbaum .wb-row.changed span.wb-title { font-weight: 600; }
+div.wunderbaum .wb-row.changed span.wb-title { color: var(--ink); font-weight: 500; }
 
-/* Change kind (A, M, D) in the session's color, told apart by shape: M filled, A outlined, D dashed and struck. */
-.kd { font: 600 11px var(--mono); flex: none; min-width: 1.5em; line-height: 1.4; text-align: center; border-radius: 3px; color: var(--c, var(--nobody)); }
-.kd.k-add { box-shadow: inset 0 0 0 1px var(--c, var(--nobody)); }
-.kd.k-edit { background: var(--c, var(--nobody)); color: var(--bg); }
-.kd.k-delete { outline: 1px dashed var(--c, var(--nobody)); outline-offset: -1px; text-decoration: line-through; }
+/* Change kind as a plain letter, as git status and the pane write it: A added, M edited, D deleted (struck). */
+.kd { font: 600 var(--fs-meta) var(--mono); flex: none; min-width: 1.2em; text-align: center; color: var(--mute); }
+.kd.k-add { color: var(--add); }
+.kd.k-delete { color: var(--del); text-decoration: line-through; }
 :is(.path, .wb-title).k-delete .base, .wb-row.k-delete span.wb-title { text-decoration: line-through; color: var(--mute); }
 .fi { width: 16px; height: 16px; flex: none; align-self: center; }
+.file > summary .fi { align-self: flex-start; margin-top: 2px; }
 div.wunderbaum i.wb-icon[style] { background-size: 16px; background-position: center; background-repeat: no-repeat; }
 
 /* Overview: sessions > files > changes, each a <details>. */
-.repo { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--mute); margin: 18px 0 8px; }
+.repo { font: 600 var(--fs-body) var(--mono); color: var(--ink); margin: 28px 0 10px; }
 .repo:first-child { margin-top: 0; }
 details > summary { list-style: none; cursor: pointer; }
 details > summary::-webkit-details-marker { display: none; }
@@ -100,37 +105,43 @@ details > summary::-webkit-details-marker { display: none; }
 details[open] > summary .car { transform: rotate(90deg); }
 /* One leading edge per level: the caret column, then --step for everything under a session. */
 #main { --step: 36px; }
-.grp { margin-bottom: 24px; }
-.grp > summary { display: flex; gap: 8px; align-items: center; padding: 6px 8px 6px 0; border-radius: 6px; }
-.grp > summary .who-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c); flex: none; }
-.grp > summary .name { font-weight: 650; white-space: nowrap; }
+.grp { margin-bottom: 20px; }
+.grp > summary { display: flex; gap: 10px; align-items: baseline; padding: 6px 8px 6px 0; }
+.grp > summary .name { font-weight: 600; font-size: var(--fs-body); white-space: nowrap; color: var(--c); }
 .grp > summary .doing { color: var(--mute); min-width: 12em; flex: 1 1 12em; }
-.num { font: 12px var(--mono); white-space: nowrap; }
+.num { font: var(--fs-meta) var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .num .ad { color: var(--add); } .num .de { color: var(--del); }
 .files { padding-left: var(--step); }
-.file > summary { display: flex; gap: 8px; align-items: baseline; padding: 4px 8px 4px 0; border-radius: 6px; }
+.file > summary { display: flex; gap: 10px; align-items: baseline; padding: 5px 8px 5px 0; }
 /* The file caret sits in the session caret's column; the path on the session name's edge. */
 .file > summary .car { margin-left: calc(-1 * var(--step)); margin-right: calc(var(--step) - 20px); }
-.file > summary:hover, .grp > summary:hover { background: var(--hover); }
-.path { font: 13px var(--mono); white-space: nowrap; }
+/* Only the name answers the pointer, as in the band and the pane. */
+.grp > summary:hover .name, .file > summary:hover .path .base { text-decoration: underline; text-underline-offset: 3px; }
+.path { font: var(--fs-ui) var(--mono); white-space: nowrap; }
 .path .dir { color: var(--faint); }
-.titles { color: var(--mute); font-size: 13px; min-width: 0; flex: 1; }
+.titles { color: var(--mute); font-size: var(--fs-ui); min-width: 0; flex: 1; }
 .titles i { font-style: normal; color: var(--faint); padding: 0 5px; }
 .open { border: 0; background: none; color: var(--faint); cursor: pointer; padding: 0 2px; }
 .open:hover { color: var(--ink); }
 .fresh { animation: flash 2.4s ease-out; }
 @keyframes flash { 0% { background: color-mix(in srgb, var(--c, var(--a0)) 30%, transparent); } 100% { background: transparent; } }
 
-/* Diff lines: author gutter, then sign, then code. */
-.hunks { padding: 4px 0 12px; margin-left: calc(-1 * var(--step)); }
-.hunk { margin-bottom: 8px; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
-.hunk > header { display: flex; gap: 8px; align-items: baseline; padding: 4px 10px; background: var(--code); font-size: 12.5px; }
-.hunk > header .t { font-weight: 600; }
-.hunk > header .t.where { font: 12px var(--mono); font-weight: 400; color: var(--mute); }
-.hunk > header .ln { margin-left: auto; font: 11px var(--mono); color: var(--faint); }
-.diff { font: 12.5px/1.55 var(--mono); overflow-x: auto; background: var(--panel); }
+/* A file's diff is one box, as GitHub draws it: each hunk under a slim header, and a row for the lines
+   no hunk shows (before, between, after) that opens them in place. */
+.hunks { padding: 6px 0 14px; margin-left: calc(-1 * var(--step)); }
+.dbox { border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--panel); }
+.hh { display: flex; gap: 8px; align-items: baseline; padding: 5px 10px; background: var(--code); font-size: var(--fs-ui); border-top: 1px solid var(--line); }
+.dbox > .hh:first-child { border-top: 0; }
+.hh .t { font-weight: 500; }
+.hh .t.where { font: var(--fs-meta) var(--mono); color: var(--mute); }
+.hh .ln { margin-left: auto; font: var(--fs-meta) var(--mono); color: var(--faint); }
+.gap { display: flex; gap: 8px; align-items: center; padding: 3px 10px 3px 14px; font: var(--fs-meta) var(--mono); color: var(--mute); background: color-mix(in srgb, var(--a0) 7%, var(--code)); border-top: 1px solid var(--line); cursor: pointer; }
+.dbox > .gap:first-child { border-top: 0; }
+.gap:hover { color: var(--ink); background: color-mix(in srgb, var(--a0) 14%, var(--code)); }
+.gap + .diff, .diff + .gap { border-top: 1px solid var(--line); }
+.diff { font: 12px/20px var(--mono); overflow-x: auto; background: var(--panel); }
 .l { display: grid; grid-template-columns: 44px 18px 1fr; white-space: pre-wrap; overflow-wrap: anywhere; }
-.l .n { color: var(--faint); text-align: right; padding-right: 8px; user-select: none; font-size: 11px; }
+.l .n { color: var(--faint); text-align: right; padding-right: 8px; user-select: none; font-variant-numeric: tabular-nums; }
 .l:is(.add, .del) .n { background: color-mix(in srgb, var(--c, var(--nobody)) 22%, transparent); color: var(--ink); }
 .l .s { color: var(--faint); text-align: center; user-select: none; }
 .l.add .s { color: var(--add); font-weight: 700; } .l.del .s { color: var(--del); font-weight: 700; }
@@ -140,13 +151,13 @@ details[open] > summary .car { transform: rotate(90deg); }
 .l code { font: inherit; background: none; padding: 0; }
 .l mark { background: color-mix(in srgb, var(--c) 30%, transparent); color: inherit; border-radius: 2px; }
 .l del { color: var(--mute); }
-.more { padding: 4px 10px; color: var(--mute); cursor: pointer; font-size: 12px; background: var(--code); }
+.more { padding: 4px 10px; color: var(--mute); cursor: pointer; font-size: var(--fs-meta); background: var(--code); }
 .empty { color: var(--mute); padding: 40px 0; }
 
 /* Focused file. */
 .bar { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
 .bar .btn { border: 1px solid var(--line); background: var(--panel); padding: 3px 10px; border-radius: 7px; cursor: pointer; }
-.bar .crumb { font: 13px var(--mono); color: var(--mute); overflow-wrap: anywhere; }
+.bar .crumb { font: var(--fs-ui) var(--mono); color: var(--mute); overflow-wrap: anywhere; }
 .bar .crumb b { color: var(--ink); font-weight: 600; }
 .doc { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 24px 40px 40px; max-width: 920px; }
 .markdown-body { background: transparent; font-size: 15px; }
@@ -154,8 +165,8 @@ details[open] > summary .car { transform: rotate(90deg); }
 .sec > summary { display: flex; align-items: baseline; gap: 6px; margin-left: -18px; }
 .sec > summary > :is(h1, h2, h3, h4, h5, h6) { flex: 1; margin-bottom: 8px; }
 .sec > summary .car { align-self: center; width: 12px; }
-.sec .chg-titles { font-size: 12px; color: var(--mute); font-weight: 400; display: flex; gap: 6px; flex-wrap: wrap; align-self: center; }
-.chip { font-size: 11.5px; padding: 2px 8px; border-radius: 10px; background: color-mix(in srgb, var(--c) var(--tint), transparent); border: 1px solid color-mix(in srgb, var(--c) 40%, transparent); white-space: nowrap; color: var(--ink); }
+.sec .chg-titles { font-size: var(--fs-meta); color: var(--mute); font-weight: 400; display: flex; gap: 6px; flex-wrap: wrap; align-self: center; }
+.chip { font-size: var(--fs-meta); padding: 2px 8px; border-radius: 10px; background: color-mix(in srgb, var(--c) var(--tint), transparent); border: 1px solid color-mix(in srgb, var(--c) 40%, transparent); white-space: nowrap; color: var(--ink); }
 .markdown-body .chg { background: color-mix(in srgb, var(--c) calc(var(--tint) / 2), transparent); border-radius: 6px; padding: 4px 12px; margin-inline: -12px; }
 .markdown-body mark { background: color-mix(in srgb, var(--c) var(--tint), transparent); color: inherit; border-bottom: 2px solid var(--c); padding: 0 1px; }
 .markdown-body del { color: var(--c); opacity: .75; }
@@ -164,22 +175,28 @@ details[open] > summary .car { transform: rotate(90deg); }
 .src { padding: 0; overflow: hidden; }
 
 /* Activity feed. */
-.ev { display: grid; grid-template-columns: 10px 1fr; gap: 0 8px; padding: 6px 6px; border-radius: 6px; cursor: pointer; }
-.ev:hover { background: var(--hover); }
-.ev .dot { width: 8px; height: 8px; margin-top: 6px; }
-.ev .t { font-size: 13px; overflow-wrap: anywhere; }
-.ev .w { grid-column: 2; font-size: 11.5px; color: var(--faint); overflow-wrap: anywhere; }
+.ev { display: grid; gap: 2px; padding: 7px 8px; border-radius: 6px; cursor: pointer; }
+.ev:hover .t { text-decoration: underline; text-underline-offset: 3px; }
+.ev .t { font-size: var(--fs-ui); overflow-wrap: anywhere; }
+.ev .w { font-size: var(--fs-meta); color: var(--faint); overflow-wrap: anywhere; }
+.ev .w b { font-weight: 500; color: var(--c); }
 .ev.off { display: none; }
 
 /* Finder. */
 dialog { border: 1px solid var(--line); border-radius: 10px; padding: 0; width: min(640px, calc(100vw - 32px)); background: var(--panel); color: var(--ink); box-shadow: 0 20px 60px rgba(0,0,0,.25); margin-top: 12vh; }
 dialog::backdrop { background: rgba(0,0,0,.25); }
-dialog input { width: 100%; border: 0; border-bottom: 1px solid var(--line); padding: 12px 14px; font: 15px inherit; background: transparent; color: var(--ink); outline: none; }
+dialog input { width: 100%; border: 0; border-bottom: 1px solid var(--line); padding: 12px 14px; font: var(--fs-body) var(--sans); background: transparent; color: var(--ink); outline: none; }
 #hits { list-style: none; margin: 0; padding: 6px; max-height: 50vh; overflow: auto; }
 #hits li { display: flex; gap: 8px; align-items: baseline; padding: 5px 8px; border-radius: 6px; cursor: pointer; }
 #hits li.on { background: var(--hover); }
-#hits .k { font-size: 11px; color: var(--faint); width: 14px; flex: none; }
-#hits .p { font: 12px var(--mono); color: var(--mute); margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#hits .k { font-size: var(--fs-meta); color: var(--faint); width: 14px; flex: none; }
+#hits .p { font: var(--fs-meta) var(--mono); color: var(--mute); margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* The key list behind `?`. */
+#help { width: min(440px, calc(100vw - 32px)); padding: 16px 20px 18px; }
+#help h2 { font-size: var(--fs-body); font-weight: 600; margin: 0 0 10px; }
+#help dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; }
+#help dt { text-align: right; } #help dd { margin: 0; color: var(--mute); }
 
 @media (max-width: 1100px) { .app { grid-template-columns: var(--lw, 260px) 5px minmax(0, 1fr) !important; } .right, .sash.r { display: none; } }
 @media (max-width: 760px) {
@@ -192,7 +209,6 @@ dialog input { width: 100%; border: 0; border-bottom: 1px solid var(--line); pad
   .doc { padding: 16px; }
   .find { min-width: 0; }
   .find span { display: none; }
-  .seg kbd { display: none; }
   .titles { display: none; }
   .grp > summary .mute, .grp > summary .doing { display: none; }
 }
@@ -200,8 +216,8 @@ dialog input { width: 100%; border: 0; border-bottom: 1px solid var(--line); pad
 </head>
 <body>
 <header class="top">
-  <h1><span class="live" id="live"></span>Peers</h1>
-  <div class="seg" id="zoom"><button data-zoom="1"><kbd>1</kbd>Sessions</button><button data-zoom="2"><kbd>2</kbd>Files</button><button data-zoom="3"><kbd>3</kbd>Changes</button></div>
+  <h1>Peers <span class="live" id="live">Offline</span></h1>
+  <button class="keys" id="keysbtn" title="Keys (?)"><kbd>?</kbd> Keys</button>
   <button class="find" id="findbtn"><i class="bi bi-search"></i><span>Find a file or heading</span><kbd style="margin-left:auto">⌘K</kbd></button>
 </header>
 <div class="app">
@@ -215,6 +231,14 @@ dialog input { width: 100%; border: 0; border-bottom: 1px solid var(--line); pad
   <div class="sash r" title="Drag to resize"></div>
   <aside class="rail right"><div class="label">Activity</div><div id="feed"></div></aside>
 </div>
+<dialog id="help"><h2>Keys</h2><dl>
+  <dt><kbd>⌘K</kbd> <kbd>/</kbd></dt><dd>find a file or heading</dd>
+  <dt><kbd>↑ ↓</kbd> <kbd>enter</kbd></dt><dd>pick a find result</dd>
+  <dt><kbd>esc</kbd></dt><dd>back to the overview, or close this</dd>
+  <dt><kbd>?</kbd></dt><dd>this help</dd>
+  <dt>click a name</dt><dd>fold a session or a file; the fold stays</dd>
+  <dt>click <i class="bi bi-arrows-expand"></i></dt><dd>show lines the diff hides</dd>
+</dl></dialog>
 <dialog id="finder"><input id="q" placeholder="Find a file or heading" autocomplete="off" spellcheck="false"><ul id="hits"></ul></dialog>
 <script type="module">
 import { marked } from '/vendor/marked.mjs'
@@ -223,14 +247,15 @@ import Fuse from '/vendor/fuse.mjs'
 import { Idiomorph } from '/vendor/idiomorph.mjs'
 import hljs from '/vendor/highlight.mjs'
 import Split from '/vendor/split-grid.mjs'
+import { gaps, gapText } from '/lib/rows.mjs'
 
-// Open state: a <details> is open when the zoom level reaches its depth, unless the viewer flipped it.
-// Both persist per viewer. Depth 2 = sessions open (files show), 3 = files open (changes show).
+// Open state: sessions (depth 2) open, files and unchanged doc sections (depth 3) shut, unless the viewer
+// flipped that one block. The flips persist per viewer.
 const saved = (() => { try { return JSON.parse(localStorage.getItem('peers-view') ?? '{}') } catch { return {} } })()
-const S = { state: null, focus: null, mode: null, only: null, zoom: saved.zoom ?? 2, flip: new Set(saved.flip ?? []), more: new Set(), live: false,
+const S = { state: null, focus: null, mode: null, only: null, flip: new Set(saved.flip ?? []), more: new Set(), expand: new Map(), text: new Map(), full: false, live: false,
   docs: new Map(), files: new Map(), fresh: new Map(), sigs: new Map(), lines: new Map(), freshLines: new Map(), changedOnly: !!saved.changedOnly }
-const save = () => { try { localStorage.setItem('peers-view', JSON.stringify({ zoom: S.zoom, flip: [...S.flip].slice(-500), changedOnly: S.changedOnly, cols: saved.cols })) } catch {} }
-const isOpen = (id, depth) => (S.zoom >= depth) !== S.flip.has(id)
+const save = () => { try { localStorage.setItem('peers-view', JSON.stringify({ flip: [...S.flip].slice(-500), changedOnly: S.changedOnly, cols: saved.cols })) } catch {} }
+const isOpen = (id, depth) => (depth <= 2) !== S.flip.has(id)
 
 const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 const ago = t => { const s = Math.max(1, Math.round((Date.now() - t) / 1000)); return s < 60 ? `${s}s` : s < 3600 ? `${Math.round(s / 60)}m` : s < 86400 ? `${Math.round(s / 3600)}h` : `${Math.round(s / 86400)}d` }
@@ -239,7 +264,8 @@ const num = (a, d) => `<span class="num">${a ? `<span class="ad">+${a}</span>` :
 const pathHtml = (rel, kind = '') => { const i = rel.lastIndexOf('/', rel.length - 2); return `<span class="path k-${kind}">${i < 0 ? '' : `<span class="dir">${esc(rel.slice(0, i + 1))}</span>`}<span class="base">${esc(rel.slice(i + 1))}</span></span>` }
 const KD = { add: 'A', edit: 'M', delete: 'D' }
 const KN = { add: 'Added', edit: 'Edited', delete: 'Deleted' }
-const kd = (k, a) => (k ? `<span class="kd k-${k}" style="--c:${c(a)}" title="${KN[k]}">${KD[k]}</span>` : '')
+const kd = k => (k ? `<span class="kd k-${k}" title="${KN[k]}">${KD[k]}</span>` : '')
+const names = as => as.map(a => `<b style="color:${c(a)}">${esc(nameOf(a))}</b>`).join(' ')
 
 // File and folder icons: the VS Code Material Icon Theme's own manifest, by its lookup order.
 // Names, then the longest extension, then the language VS Code gives the extension.
@@ -296,9 +322,8 @@ function legend() {
   const files = id => S.state.repos.reduce((n, r) => n + r.files.filter(f => f.authors.includes(id)).length, 0)
   morph(document.getElementById('legend'), `<div class="label">Sessions</div>` + (ss.map(s => `
     <div class="who ${S.only === s.id ? 'on' : S.only ? 'off' : ''}" data-only="${s.id}" style="--c:${c(s.id)}" title="Click to show only ${esc(s.name)}">
-      <span class="dot ${writing(s) ? 'now' : ''}"></span>
       <span><b>${esc(s.name)}</b>${s.title ? ` <span class="mute">${esc(s.title)}</span>` : ''}</span>
-      <span class="meta">${files(s.id)} · ${ago(s.updated)}</span>
+      <span class="meta ${writing(s) ? 'now' : ''}">${files(s.id)} · ${writing(s) ? 'now' : ago(s.updated)}</span>
       ${s.doing ? `<span class="doing">${esc(s.doing)}</span>` : ''}
     </div>`).join('') || '<div class="faint" style="padding:6px 8px">No live sessions.</div>'))
 }
@@ -324,8 +349,47 @@ function diffLines(f, h, cap, root) {
 function hunkHtml(r, f, h) {
   const id = `h:${r.root}:${f.rel}:${h.new}`
   const cap = S.more.has(id) ? 0 : 60
-  return `<div class="hunk" style="--c:${c(h.a)}"><header><span class="t ${h.said ? '' : 'where'}">${esc(h.t || (f.kind === 'add' ? 'new file' : f.kind === 'delete' ? 'deleted file' : 'change'))}</span><span class="ln">L${firstLine(h)}</span></header>
-    <div class="diff">${diffLines(f, h, cap, r.root)}</div>${cap && h.lines.length > cap ? `<div class="more" data-more="${esc(id)}">${h.lines.length - cap} more lines</div>` : ''}</div>`
+  return `<div class="hh"><span class="t ${h.said ? '' : 'where'}">${esc(h.t || (f.kind === 'add' ? 'new file' : f.kind === 'delete' ? 'deleted file' : 'change'))}</span><span class="ln">L${firstLine(h)}</span></div>
+    <div class="diff">${diffLines(f, h, cap, r.root)}</div>${cap && h.lines.length > cap ? `<div class="more" data-more="${esc(id)}">${h.lines.length - cap} more lines</div>` : ''}`
+}
+
+// Lines no hunk shows (lib/rows.mjs gaps): a row that opens 120 more of them from the file per click.
+const STEP = 120
+function gapHtml(r, f, g) {
+  const id = `g:${r.root}/${f.rel}:${g.from}`
+  const t = S.text.get(`${r.root}\0${f.rel}`)
+  const n = t?.v === f.mtime ? (S.expand.get(id) ?? 0) : 0
+  const to = Math.min(g.to, g.from + n - 1)
+  const lang = langOf(f.rel)
+  let out = ''
+  if (n) {
+    out += '<div class="diff">'
+    for (let i = g.from; i <= to; i++) out += `<div class="l"><span class="n">${i}</span><span class="s"></span><code>${hl(t.lines[i - 1] ?? '', lang) || ' '}</code></div>`
+    out += '</div>'
+  }
+  if (to < g.to) out += `<div class="gap" data-gap="${esc(id)}" data-groot="${esc(r.root)}" data-grel="${esc(f.rel)}" title="Show ${Math.min(STEP, g.to - to)} more"><i class="bi bi-arrows-expand"></i>${esc(gapText({ from: to + 1, to: g.to }))}</div>`
+  return out
+}
+
+// A file's hunks in one box, with a gap row wherever lines are not shown.
+function diffBox(r, f, hunks) {
+  const at = new Map(gaps(hunks, f.size ?? 0).map(g => [g.before, g]))
+  let out = ''
+  hunks.forEach((h, i) => { if (at.has(i)) out += gapHtml(r, f, at.get(i)); out += hunkHtml(r, f, h) })
+  if (at.has(hunks.length)) out += gapHtml(r, f, at.get(hunks.length))
+  return `<div class="dbox">${out}</div>`
+}
+
+async function expand(id, root, rel) {
+  const f = S.state.repos.find(x => x.root === root)?.files.find(x => x.rel === rel)
+  const k = `${root}\0${rel}`
+  if (S.text.get(k)?.v !== f?.mtime) {
+    const d = await loadDoc(root, rel)
+    S.text.set(k, { v: f?.mtime, lines: (d?.text ?? '').split('\n') })
+    for (const x of S.expand.keys()) if (x.startsWith(`g:${root}/${rel}:`)) S.expand.delete(x)
+  }
+  S.expand.set(id, (S.expand.get(id) ?? 0) + STEP)
+  render()
 }
 
 function fileRow(r, f, group, hunks) {
@@ -335,10 +399,10 @@ function fileRow(r, f, group, hunks) {
   const said = [...new Set(hunks.filter(h => h.said).map(h => h.t))]
   const fresh = S.fresh.has(`${r.root}\0${f.rel}`) ? 'fresh' : ''
   return `<details class="file" data-id="${esc(id)}" data-depth="3" ${isOpen(id, 3) ? 'open' : ''}>
-    <summary class="${fresh}"><i class="car bi bi-chevron-right"></i>${f.count ? iconImg(f.rel.split('/').at(-2), true) : iconImg(f.rel.split('/').pop())}${pathHtml(f.rel, f.kind)}${f.count ? `<span class="mute">${f.count} new files</span>` : ''}
-      <span class="titles">${said.map(esc).join('<i>·</i>')}</span>${num(adds, dels)}<span class="faint num">${ago(f.mtime)}</span>${kd(f.kind, group)}
+    <summary class="${fresh}"><i class="car bi bi-chevron-right"></i>${f.count ? iconImg(f.rel.split('/').at(-2), true) : iconImg(f.rel.split('/').pop())}${kd(f.kind)}${pathHtml(f.rel, f.kind)}${f.count ? `<span class="mute">${f.count} new files</span>` : ''}
+      <span class="titles">${said.map(esc).join('<i>·</i>')}</span>${num(adds, dels)}<span class="faint num">${ago(f.mtime)}</span>
       ${f.count ? '' : `<button class="open" data-root="${esc(r.root)}" data-rel="${esc(f.rel)}" title="Open the file"><i class="bi bi-box-arrow-up-right"></i></button>`}</summary>
-    <div class="hunks">${hunks.length ? hunks.map(h => hunkHtml(r, f, h)).join('') : `<div class="more">${f.count ? 'A new folder: open its files in the tree.' : 'No text diff (binary, empty or mode only).'}</div>`}</div></details>`
+    <div class="hunks">${hunks.length ? diffBox(r, f, hunks) : `<div class="more">${f.count ? 'A new folder: open its files in the tree.' : 'No text diff (binary, empty or mode only).'}</div>`}</div></details>`
 }
 
 // Each hunk sits under the session owning most of its lines; a file shows under each such session.
@@ -367,19 +431,20 @@ function overview() {
       const adds = rows.reduce((n, [, hs]) => n + hs.reduce((m, h) => m + h.lines.filter(x => x.t === '+').length, 0), 0)
       const dels = rows.reduce((n, [, hs]) => n + hs.reduce((m, h) => m + h.lines.filter(x => x.t === '-').length, 0), 0)
       body += `<details class="grp" data-id="${esc(id)}" data-depth="2" style="--c:${c(a)}" ${isOpen(id, 2) ? 'open' : ''}>
-        <summary><i class="car bi bi-chevron-right"></i><span class="who-dot"></span><span class="name">${esc(s ? nameOf(a) : 'Unattributed')}</span>
+        <summary><i class="car bi bi-chevron-right"></i><span class="name">${esc(s ? nameOf(a) : 'Unattributed')}</span>
           ${s?.title ? `<span class="mute">${esc(s.title)}</span>` : ''}
           <span class="doing">${s?.doing ? esc(s.doing) : ''}</span>
           <span class="faint num">${rows.length} file${rows.length === 1 ? '' : 's'}</span>${num(adds, dels)}${s ? `<span class="faint num">${ago(s.updated)}</span>` : ''}</summary>
         ${rows.length ? `<div class="files">${rows.map(([f, hs]) => fileRow(r, f, a, hs)).join('')}</div>` : ''}</details>`
     }
-    if (body) out += `<div class="repo">${esc(r.name)}</div>${body}`
+    if (body) out += `<div class="repo">${esc(r.name)}/</div>${body}`
   }
   return out || '<div class="empty">No live sessions.</div>'
 }
 
 // A document: the server's lines (lib/doc.mjs) as Markdown, added text marked and removed text struck
-// in the author's color, folded by heading. A changed section opens at zoom 2, any section at zoom 3.
+// in the author's color, folded by heading. In a doc with a change, unchanged sections start shut;
+// a jump from the finder opens all.
 function mdOf(ls) {
   const out = []
   for (let i = 0; i < ls.length; i++) {
@@ -416,12 +481,13 @@ function blocks(html) {
 
 function docView(r, f, d) {
   const key = `${r.root}\0${f?.rel ?? S.focus.rel}`
-  if (d.html && d.zoom === S.zoom && d.flips === S.flip.size && d.only === S.only) return d.html
+  if (d.html && d.full === S.full && d.flips === S.flip.size && d.only === S.only) return d.html
   const ls = d.lines
   const hunks = f?.hunks ?? []
   // New-file line of each doc line ('-' lines have none), to place each change's title in its section.
   let n = 0
   const at = ls.map(x => (x.k === '-' ? n : ++n))
+  const any = !S.full && ls.some(x => x.k !== '=')
   const secs = [{ depth: 0, start: 0, head: -1, kids: [] }]
   const stack = [secs[0]]
   ls.forEach((x, i) => {
@@ -447,11 +513,11 @@ function docView(r, f, d) {
     const id = `d:${key}:${s.start}`
     const headHtml = blocks(marked.parse(mdOf([ls[s.head]])))
     const chips = [...new Map(mine.map(h => [h.t, h])).values()].map(h => `<span class="chip" style="--c:${c(h.a)}">${esc(h.t)}</span>`).join('')
-    return `<details class="sec" data-id="${esc(id)}" data-depth="${changed ? 2 : 3}" data-line="${at[s.start]}" ${isOpen(id, changed ? 2 : 3) ? 'open' : ''}>
+    return `<details class="sec" data-id="${esc(id)}" data-depth="${changed || !any ? 2 : 3}" data-line="${at[s.start]}" ${isOpen(id, changed || !any ? 2 : 3) ? 'open' : ''}>
       <summary><i class="car bi bi-chevron-right"></i>${headHtml}${chips ? `<span class="chg-titles">${chips}</span>` : ''}</summary><div class="sec-body">${inner}</div></details>`
   }
   d.html = `<article class="doc markdown-body">${render(secs[0])}</article>`
-  Object.assign(d, { zoom: S.zoom, flips: S.flip.size, only: S.only })
+  Object.assign(d, { full: S.full, flips: S.flip.size, only: S.only })
   return d.html
 }
 
@@ -481,9 +547,9 @@ function focusView() {
   const rel = S.focus.rel
   let out = `<div class="bar"><button class="btn" data-back><i class="bi bi-arrow-left"></i> Overview</button>
     <span class="seg"><button data-mode="doc" class="${mode === 'doc' ? 'on' : ''}">${isDoc(rel) ? 'Document' : 'Source'}</button><button data-mode="diff" class="${mode === 'diff' ? 'on' : ''}" ${f ? '' : 'disabled'}>Changes</button></span>
-    ${f ? kd(f.kind, f.authors[0]) : ''}<span class="crumb">${esc(r?.name ?? '')} / ${esc(rel.split('/').slice(0, -1).join('/'))}${rel.includes('/') ? '/' : ''}<b>${esc(rel.split('/').pop())}</b></span>
-    ${f ? `<span class="dots">${f.authors.map(a => `<i style="--c:${c(a)}" title="${esc(nameOf(a))}"></i>`).join('')}</span>${num(f.hunks.reduce((n, h) => n + h.lines.filter(x => x.t === '+').length, 0), f.hunks.reduce((n, h) => n + h.lines.filter(x => x.t === '-').length, 0))}` : '<span class="faint">no uncommitted change</span>'}</div>`
-  if (mode === 'diff' && f) return out + (f.hunks.length ? f.hunks.map(h => hunkHtml(r, f, h)).join('') : '<div class="empty">No text diff.</div>')
+    ${f ? kd(f.kind) : ''}<span class="crumb">${esc(r?.name ?? '')}/${esc(rel.split('/').slice(0, -1).join('/'))}${rel.includes('/') ? '/' : ''}<b>${esc(rel.split('/').pop())}</b></span>
+    ${f ? `<span class="who-names">${names(f.authors)}</span>${num(f.hunks.reduce((n, h) => n + h.lines.filter(x => x.t === '+').length, 0), f.hunks.reduce((n, h) => n + h.lines.filter(x => x.t === '-').length, 0))}` : '<span class="faint">no uncommitted change</span>'}</div>`
+  if (mode === 'diff' && f) return out + (f.hunks.length ? diffBox(r, f, f.hunks) : '<div class="empty">No text diff.</div>')
   // The repo's last session ended while the file was open.
   if (!r) return out + '<div class="empty">This repo has no live session now.</div>'
   const d = S.docs.get(`${S.focus.root}\0${rel}`)
@@ -496,11 +562,12 @@ function feed() {
   const rows = S.state.repos.flatMap(r => r.feed.map(e => ({ ...e, root: r.root, repo: r.name }))).sort((a, b) => b.at - a.at).slice(0, 80)
   morph(document.getElementById('feed'), rows.map(e => `
     <div class="ev ${S.only && e.a !== S.only ? 'off' : ''} ${Date.now() - e.at < 15000 ? 'fresh' : ''}" style="--c:${c(e.a)}" data-root="${esc(e.root)}" data-rel="${esc(e.rels[0] ?? '')}">
-      <span class="dot"></span><span class="t ${e.t ? '' : 'mute'}">${e.kind === 'commit' ? `<i class="bi bi-check2-circle faint"></i> <span class="mono faint">${esc(e.sha)}</span> ${esc(e.t)}` : esc(e.t || 'Edited')}</span>
-      <span class="w">${esc(nameOf(e.a))} · ${ago(e.at)} · ${e.rels.slice(0, 3).map(x => esc(x.split('/').pop())).join(', ')}${e.rels.length > 3 ? ` +${e.rels.length - 3}` : ''}</span>
+      <span class="t ${e.t ? '' : 'mute'}">${e.kind === 'commit' ? `<i class="bi bi-check2-circle faint"></i> <span class="mono faint">${esc(e.sha)}</span> ${esc(e.t)}` : esc(e.t || 'Edited')}</span>
+      <span class="w"><b>${esc(nameOf(e.a))}</b> · ${ago(e.at)} · ${e.rels.slice(0, 3).map(x => esc(x.split('/').pop())).join(', ')}${e.rels.length > 3 ? ` +${e.rels.length - 3}` : ''}</span>
     </div>`).join('') || '<div class="faint">No activity yet.</div>')
 }
 
+const liveMark = () => { const el = document.getElementById('live'); el.className = `live ${S.live ? 'on' : ''}`; el.textContent = S.live ? 'Live' : 'Offline' }
 const morph = (el, html) => Idiomorph.morph(el, html, { morphStyle: 'innerHTML' })
 
 async function render() {
@@ -512,8 +579,7 @@ async function render() {
     const v = f ? f.mtime : 0
     if (!S.docs.has(k) || S.docs.get(k).v !== v) S.docs.set(k, { ...((await loadDoc(S.focus.root, S.focus.rel)) ?? { missing: true }), v })
   }
-  document.getElementById('live').className = `live ${S.live ? 'on' : ''}`
-  for (const b of document.querySelectorAll('#zoom button')) b.classList.toggle('on', +b.dataset.zoom === S.zoom)
+  liveMark()
   legend()
   feed()
   morph(document.getElementById('main'), S.focus ? focusView() : overview())
@@ -555,7 +621,7 @@ const tree = {
     const lists = await Promise.all(S.state.repos.map(r => fetch(`/api/files?root=${encodeURIComponent(r.root)}`).then(x => (x.ok ? x.json() : { paths: [], heads: [] }))))
     finder.set(S.state.repos.map((r, i) => ({ r, ...lists[i] })))
     const source = S.state.repos.map((r, i) => {
-      const top = { title: r.name, key: `${r.root}\0`, children: [], expanded: true }
+      const top = { title: `${r.name}/`, key: `${r.root}\0`, children: [], expanded: true, classes: 'repo' }
       const dirs = new Map([['', top]])
       for (const p of lists[i].paths.slice().sort()) {
         const parts = p.split('/')
@@ -599,7 +665,7 @@ const tree = {
     for (const k of Object.keys(KD)) e.nodeElem.parentElement?.classList.toggle(`k-${k}`, info?.kind === k)
     if (!info) { tn?.remove(); return }
     if (!tn) { tn = document.createElement('span'); tn.className = 'tn'; e.nodeElem.append(tn) }
-    tn.innerHTML = `<span class="dots">${[...info.authors].map(a => `<i style="--c:${c(a)}"></i>`).join('')}</span>${info.adds ? `<span class="ad">+${info.adds}</span>` : ''}${info.dels ? `<span class="de">−${info.dels}</span>` : ''}${info.kind && !e.node.key.endsWith('/') ? kd(info.kind, [...info.authors][0]) : ''}`
+    tn.innerHTML = `${info.adds ? `<span class="ad">+${info.adds}</span>` : ''}${info.dels ? `<span class="de">−${info.dels}</span>` : ''}${info.kind && !e.node.key.endsWith('/') ? kd(info.kind) : ''}`
   },
   // Roll each changed file up to its folders, then redraw and expand the path to each change.
   paint(first = false) {
@@ -669,25 +735,18 @@ function open(root, rel, line = 0) {
   S.jump = line
   // A jump target folded away opens.
   if (line) for (const k of [...S.flip]) if (k.startsWith(`d:${root}\0${rel}:`)) S.flip.delete(k)
-  if (line && S.zoom < 3) { S.zoom = 3; save() }
+  S.full = !!line
   if (!line) scrollTo(0, 0)
   render()
 }
 
-function setZoom(z) {
-  S.zoom = z
-  S.flip.clear()
-  for (const d of S.docs.values()) d.html = null
-  save()
-  render()
-}
-
 document.addEventListener('click', e => {
-  const t = e.target.closest('[data-rel],[data-only],[data-back],[data-mode],[data-more],[data-zoom],[data-hit],#findbtn')
+  const t = e.target.closest('[data-rel],[data-only],[data-back],[data-mode],[data-more],[data-gap],[data-hit],#findbtn,#keysbtn')
   if (!t) return
   if (t.id === 'findbtn') return finder.show()
   if (t.dataset.hit) return finder.go(+t.dataset.hit)
-  if (t.dataset.zoom) return setZoom(+t.dataset.zoom)
+  if (t.id === 'keysbtn') return help.showModal()
+  if (t.dataset.gap) return expand(t.dataset.gap, t.dataset.groot, t.dataset.grel)
   if (t.dataset.rel !== undefined && t.closest('summary')) e.preventDefault()
   if (t.dataset.only) S.only = S.only === t.dataset.only ? null : t.dataset.only
   else if (t.dataset.back !== undefined) { S.focus = null; S.mode = null }
@@ -698,7 +757,7 @@ document.addEventListener('click', e => {
   render()
 })
 
-// A viewer's toggle flips that one block away from the zoom default; the flip persists.
+// A viewer's toggle flips that one block away from its default; the flip persists.
 document.addEventListener('toggle', e => {
   const el = e.target
   if (!(el instanceof HTMLDetailsElement) || !el.dataset.id) return
@@ -718,10 +777,12 @@ document.addEventListener('keydown', e => {
     return
   }
   if (e.target.closest('input, textarea, .wunderbaum') || e.metaKey || e.ctrlKey || e.altKey) return
-  if (['1', '2', '3'].includes(e.key)) setZoom(+e.key)
+  if (e.key === '?') help.open ? help.close() : help.showModal()
   else if (e.key === 'Escape' && S.focus) { S.focus = null; render() }
   else if (e.key === '/') { e.preventDefault(); finder.show() }
 })
+const help = document.getElementById('help')
+help.addEventListener('click', e => { if (e.target === help) help.close() })
 document.getElementById('q').addEventListener('input', e => finder.run(e.target.value))
 const box = document.getElementById('changed')
 box.checked = S.changedOnly
@@ -743,7 +804,7 @@ Split({
 
 const es = new EventSource(`/events${location.search}`)
 es.onopen = () => { S.live = true; if (S.state) render() }
-es.onerror = () => { S.live = false; document.getElementById('live').className = 'live' }
+es.onerror = () => { S.live = false; liveMark() }
 es.onmessage = async m => {
   const st = JSON.parse(m.data)
   mark(st)

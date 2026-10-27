@@ -1,9 +1,9 @@
 import { atom, read, update } from 'claude-code'
 import type { Register, RenderChildren, RenderElement } from 'claude-code'
 import type { Peer, Row, Span, ViewBody, ViewFocus, ViewFold, ViewIndex } from '../types'
-import { core, dirOf, nameOf, peerLinesLost, quote, uncommitted } from '../lib/core.mjs'
+import { core, dirOf, holds, nameOf, peerLinesLost, quote, uncommitted } from '../lib/core.mjs'
 import { delta } from '../lib/lines.mjs'
-import { ADD, DEL, ago, cast, fit, colorRule, docRow, fileHead, hunkHead, listRows, onlyQuery, terms } from '../lib/rows.mjs'
+import { ADD, DEL, HELP, ago, cast, fit, colorRule, docRow, fileHead, gapText, gaps, helpRows, hunkHead, listRows, onlyQuery, terms } from '../lib/rows.mjs'
 
 // One checkout, many sessions. Every session keeps its own ledger file:
 //   ~/.claude/peers/<encodeURIComponent(repo root)>/<session id>.json
@@ -151,7 +151,8 @@ const SHARED = '#a594f9'
 const MAX_LINES = 600
 
 const indexAtom = atom({ plugin: 'peers', key: 'index' } as const, { sig: '', repos: [] } as ViewIndex, { shape: 'index-2' })
-const foldAtom = atom({ plugin: 'peers', key: 'fold' } as const, { zoom: 2, flip: [] } as ViewFold, { shape: 'fold-1' })
+const foldAtom = atom({ plugin: 'peers', key: 'fold' } as const, { flip: [] } as ViewFold, { shape: 'fold-1' })
+const helpAtom = atom({ plugin: 'peers', key: 'help' } as const, false)
 const focusAtom = atom({ plugin: 'peers', key: 'focus' } as const, null as ViewFocus, { shape: 'focus-1' })
 const bodyAtom = atom({ plugin: 'peers', key: 'body' } as const, null as ViewBody, { shape: 'body-1' })
 let tick: { cancel: () => void } | null = null
@@ -207,7 +208,7 @@ const openPeer = async ($: any, id: string) => {
   await update($, focusAtom, () => null)
   const ids = (await read($, indexAtom)).repos.filter(r => r.sessions.some(s => s.id === id)).map(r => `s:${r.root}:${id}`)
   if (!ids.length) return
-  await update($, foldAtom, v => ({ ...v, flip: v.zoom >= 2 ? v.flip.filter(x => !ids.includes(x)) : [...new Set([...v.flip, ...ids])] }))
+  await update($, foldAtom, v => ({ ...v, flip: v.flip.filter(x => !ids.includes(x)) }))
   await $.ui.focus({ requestId: PANE, key: ids[0] }).catch(() => {})
 }
 
@@ -226,13 +227,17 @@ export const register: Register = on => {
     session = await $.session.id()
     c = core({ home, session, backlog: (await $.env.get('BACKLOG_CWD')) ?? '' })
     cwdRoot = await k($).rootOf(e.cwd)
-    if (cwdRoot) await k($).saveMine(await k($).loadMine(cwdRoot))
+    // Write around: a session's ledger is first written by its first edit or claim, never empty at start.
+    if (cwdRoot) {
+      const mine = await k($).loadMine(cwdRoot)
+      if (holds(mine)) await k($).saveMine(mine)
+    }
     // A reload runs session.end, then session.start: this session's ledgers are live again.
     try {
       for (const d of await $.fs.list(`${home}/.claude/peers`)) {
         const path = `${home}/.claude/peers/${d.name}/${session}.json`
         const l = await k($).readJson(path)
-        if (l?.ended) await k($).saveMine(l)
+        if (l?.ended && holds(l)) await k($).saveMine(l)
       }
     } catch {}
     // `peers` on PATH: the one install step beyond /plugin install.
@@ -300,27 +305,55 @@ export const register: Register = on => {
       await update($, focusAtom, () => f)
       await loadBody($)
     }
+    const helpOn = await read($, helpAtom)
+    const helpKey = (
+      <Button key="help" plain hotkey="k" dimColor={!helpOn} onPress={async () => void (await update($, helpAtom, v => !v))}>
+        {helpOn ? 'close help' : 'keys'}
+      </Button>
+    )
+    if (helpOn)
+      return (
+        <Box flexDirection="column">
+          <Box gap={2}>{helpKey}</Box>
+          <Text> </Text>
+          {(helpRows(
+            // A pane hotkey is one letter: k opens this help where the terminal view takes ?.
+            (focus ? HELP.file : HELP.list).map(([k, w]: string[]) => [k === '?' ? 'k' : k, w]),
+            [['ctrl+x ←', 'wider'], ['esc', 'close the pane']],
+          ) as Row[]).map(r => (
+            <Text key={r.key}>{spans(r.spans)}</Text>
+          ))}
+        </Box>
+      )
 
     if (!focus) {
       const flip = (id: string) => async () =>
         void (await update($, foldAtom, v => ({ ...v, flip: v.flip.includes(id) ? v.flip.filter(x => x !== id) : [...v.flip.slice(-200), id] })))
-      const zoom = (z: 1 | 2 | 3) => async () => void (await update($, foldAtom, () => ({ zoom: z, flip: [] })))
+      // Only a row's name spans are the Button, as in the band: the pointer lights the name, not the counts.
+      const pressRow = (r: Row) => {
+        const first = r.spans.findIndex(x => x.hit)
+        const last = r.spans.findLastIndex(x => x.hit)
+        const [lead, name, tail] = first < 0 ? [[], r.spans, []] : [r.spans.slice(0, first), r.spans.slice(first, last + 1), r.spans.slice(last + 1)]
+        return (
+          <Box key={`row:${r.key}`} flexDirection="row">
+            {lead.length > 0 && <Text>{spans(lead)}</Text>}
+            <Button key={r.key} plain onPress={'fold' in r.press! ? flip(r.press.fold) : show(r.press!.open)}>
+              {ringed(Text, ring === r.key, spans(name))}
+            </Button>
+            {tail.length > 0 && <Text>{spans(tail)}</Text>}
+          </Box>
+        )
+      }
       return (
         <Box flexDirection="column">
           <Box gap={2}>
-            {([1, 2, 3] as const).map(z => (
-              <Button key={`zoom${z}`} plain hotkey={String(z)} dimColor={fold.zoom !== z} onPress={zoom(z)}>
-                {['sessions', 'files', 'changes'][z - 1]!}
-              </Button>
-            ))}
-            <Text dimColor>↑↓ move · enter opens · ctrl+x ← wider · esc closes</Text>
+            {helpKey}
+            <Text dimColor>↑↓ move · enter opens · esc closes</Text>
           </Box>
           <Text> </Text>
           {(listRows(ix, fold, now, e.props.bodyColumns - 1) as Row[]).map(r =>
             r.press ? (
-              <Button key={r.key} plain onPress={'fold' in r.press ? flip(r.press.fold) : show(r.press.open)}>
-                {ringed(Text, ring === r.key, spans(r.spans))}
-              </Button>
+              pressRow(r)
             ) : (
               <Text key={r.key}>{r.spans.length ? spans(r.spans) : ' '}</Text>
             ),
@@ -339,7 +372,12 @@ export const register: Register = on => {
     else {
       // Claude Code's own diff: its gutters, highlighter and add/remove colors. The owner's title heads each hunk.
       let room = 90000
-      for (const hunk of body.hunks ?? []) {
+      const hs = body.hunks ?? []
+      type Gap = { before: number; from: number; to: number }
+      const gap = new Map((gaps(hs, head.file.size) as Gap[]).map(g => [g.before, g]))
+      const gapRow = (i: number) => gap.has(i) && rows.push(<Text key={`gap:${i}`} dimColor>{gapText(gap.get(i)!)}</Text>)
+      for (const [i, hunk] of hs.entries()) {
+        gapRow(i)
         const olds = hunk.lines.filter(x => x.t !== '+').length
         const news = hunk.lines.filter(x => x.t !== '-').length
         const source = `@@ -${hunk.old},${olds} +${hunk.new},${news} @@\n${hunk.lines.map(x => x.t + x.s).join('\n')}`
@@ -347,7 +385,8 @@ export const register: Register = on => {
         room -= source.length
         rows.push(<Text>{spans(hunkHead(hunk, col, nameOf))}</Text>, <Code format="diff" path={focus.rel} source={source} />)
       }
-      if (!rows.length) rows.push(<Text>No text diff (binary, empty or mode only).</Text>)
+      if (rows.length) gapRow(hs.length)
+      else rows.push(<Text>No text diff (binary, empty or mode only).</Text>)
     }
     const more = rows.length - MAX_LINES
     return (
@@ -356,6 +395,7 @@ export const register: Register = on => {
           <Button plain hotkey="b" onPress={show(null)}>back</Button>
           <Button plain hotkey="d" dimColor={focus.mode !== 'doc'} onPress={show({ ...focus, mode: 'doc' })}>document</Button>
           <Button plain hotkey="f" dimColor={focus.mode !== 'diff'} onPress={show({ ...focus, mode: 'diff' })}>diff</Button>
+          {helpKey}
         </Box>
         <Text>{spans(head.spans)}</Text>
         <Text> </Text>
