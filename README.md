@@ -81,7 +81,10 @@ peers close -r "shipped"   # Done + archived, summary carries the sha
 peers ls                    # every live session in this repo
 peers view                  # live page of every session's edits
 peers tui                   # the same view, full screen in a terminal
+peers tui wren ./lander     # only those repos (view and /peers-view take the same words)
 ```
+
+A filter word is a path or a name. A path (`.`, `../lander`, `~/x`) shows the repo it is, the repos under it, or the repo that holds it. A name shows, by the first tier that matches: the repo of that name, a repo whose name holds it, a folder of that name in the repo's path, a folder whose name holds it. Case does not matter. So `wren` is the wren repo, `auto` is autobrowse and `wren_automation` is every repo in that folder. Several words add up. The top row shows the words and the repos they matched. When nothing matches, it lists the live repos. There is no config file: the repos come from the live ledgers (see Where the state lives).
 
 `peers view` opens http://127.0.0.1:6421 (`PEERS_VIEW_PORT` to change). It shows the uncommitted edits in every repo with a live session, each line in its author's color; grey is a line no ledger holds.
 
@@ -93,7 +96,7 @@ peers tui                   # the same view, full screen in a terminal
 - Activity: titled edits and commits (with their subjects), newest first.
 - Live: a changed file and its new lines pulse in place; scroll and folds stay. The server starts on the first call and stops 15 minutes after the last page closes.
 
-`/peers-view` in Claude Code (`/peers` is a built-in name) opens the same view in a pane, also mid-turn; Escape or `/peers-view` again closes it. It shows the legend, the zoom levels (`1` `2` `3`), files by session with their titles, and the activity. Each file shows its kind: `A` added, `M` edited, `D` deleted (struck). Enter on a file opens it; `d` and `f` switch document and diff, `b` goes back. The diff is Claude Code's own (its highlighter and colors), headed by the owner's change title. `ctrl+x ←` widens the pane. The band above the prompt opens it too. A press on one peer in the band opens the pane on that session. ▶ and ▼ fold a group. Each session lists its open files, then its commits (sha, subject, file count): a session that committed all its work still shows. The band counts open files only. Only session names and commit hashes carry the session's color. File names are blue. All other text is white; gray marks only times and key hints.
+`/peers-view` in Claude Code (`/peers` is a built-in name) opens the same view in a pane, also mid-turn; Escape or `/peers-view` again closes it. `/peers-view wren` opens it on the repos those words match, or sets that filter on the open pane. It shows the legend, the zoom levels (`1` `2` `3`), files by session with their titles, and the activity. Each file shows its kind: `A` added, `M` edited, `D` deleted (struck). Enter on a file opens it; `d` and `f` switch document and diff, `b` goes back. The diff is Claude Code's own (its highlighter and colors), headed by the owner's change title. `ctrl+x ←` widens the pane. The band above the prompt opens it too. A press on one peer in the band opens the pane on that session. ▶ and ▼ fold a group. Each session lists its open files, then its commits (sha, subject, file count): a session that committed all its work still shows. The band counts open files only. Only session names and commit hashes carry the session's color. File names are blue. All other text is white; gray marks only times and key hints.
 
 Up and down walk the rows with this in `~/.claude/keybindings.json` (by default they scroll, and Tab walks):
 

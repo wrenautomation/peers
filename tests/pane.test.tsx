@@ -53,7 +53,9 @@ const PANE = {
 
 test('the pane lists files and opens one as a document and a diff', async ($, on) => {
   mock.clock(on, { now: 65_000 })
+  const urls: string[] = []
   on('http.fetch', (_, e) => {
+    urls.push(e.url)
     const body = e.url.includes('/api/index') ? INDEX : e.url.includes('/api/doc') ? DOC : HUNKS
     return { value: { status: 200, ok: true, headers: {}, text: JSON.stringify(body) } }
   })
@@ -70,14 +72,19 @@ test('the pane lists files and opens one as a document and a diff', async ($, on
     return { value: undefined }
   })
   on('command.register', () => ({ value: { command: 'peers-view' } }))
-  const run = () =>
-    $.command.run({ command: 'peers-view', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 200 } })
+  on('session.cwd', () => ({ value: '/r' }))
+  const run = (args = '') =>
+    $.command.run({ command: 'peers-view', args, origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 200 } })
   // A toggle: it opens with the keys and Escape to close, then a second run closes it.
   expect((await run()).text).toBeUndefined()
   expect(opens[0]).toMatchObject({ id: 'peers', focus: true, closeOnEscape: true })
   await run()
   expect(open).toBe(false)
   await run()
+  // Words filter the open pane to the repos they match: the next poll asks the server for those only.
+  await run('lab ./lab')
+  expect(open).toBe(true)
+  expect(urls.at(-1)).toMatch(/\/api\/index\?sig=&only=lab&only=%2Fr%2Flab$/)
 
   for (const surface of ['terminal', 'mobile'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })

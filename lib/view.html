@@ -741,7 +741,7 @@ Split({
   },
 })
 
-const es = new EventSource('/events')
+const es = new EventSource(`/events${location.search}`)
 es.onopen = () => { S.live = true; if (S.state) render() }
 es.onerror = () => { S.live = false; document.getElementById('live').className = 'live' }
 es.onmessage = async m => {

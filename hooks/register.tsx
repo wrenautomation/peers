@@ -3,7 +3,7 @@ import type { Register, RenderChildren, RenderElement } from 'claude-code'
 import type { Peer, Row, Span, ViewBody, ViewFocus, ViewFold, ViewIndex } from '../types'
 import { core, dirOf, nameOf, peerLinesLost, quote, uncommitted } from '../lib/core.mjs'
 import { delta } from '../lib/lines.mjs'
-import { ADD, DEL, ago, cast, colorRule, docRow, fileHead, hunkHead, listRows } from '../lib/rows.mjs'
+import { ADD, DEL, ago, cast, colorRule, docRow, fileHead, hunkHead, listRows, onlyQuery, terms } from '../lib/rows.mjs'
 
 // One checkout, many sessions. Every session keeps its own ledger file:
 //   ~/.claude/peers/<encodeURIComponent(repo root)>/<session id>.json
@@ -35,6 +35,7 @@ const peersAtom = atom({ plugin: 'peers', key: 'peers' } as const, [] as Peer[])
 // The band: one compact line, or with [+] a row per peer.
 const wideAtom = atom({ plugin: 'peers', key: 'wide' } as const, false)
 // The element each site's focus ring is on, by requestId.
+const onlyAtom = atom({ plugin: 'peers', key: 'only' } as const, [] as string[])
 const ringAtom = atom({ plugin: 'peers', key: 'ring' } as const, {} as Record<string, string>)
 
 // The engine's focus inverts a Button; mixed and dim colors invert to a gray bar.
@@ -183,7 +184,7 @@ const loadBody = async ($: any) => {
 const poll = async ($: any) => {
   const cur = await read($, indexAtom)
   try {
-    const ix = await getJson($, `/api/index?sig=${cur.sig}`)
+    const ix = await getJson($, `/api/index?sig=${cur.sig}${onlyQuery(await read($, onlyAtom))}`)
     if (ix) await update($, indexAtom, () => ix)
     else if (cur.error) await update($, indexAtom, v => ({ ...v, error: undefined }))
     await loadBody($)
@@ -246,10 +247,20 @@ export const register: Register = on => {
     return next(e)
   })
 
-  // A toggle with no transcript line: run again, it closes.
-  on('command.run', { command: 'peers-view' }, async $ => {
-    if ((await $.ui.panes()).some(p => p.id === PANE)) await $.ui.close({ id: PANE })
-    else await openPane($)
+  // A toggle with no transcript line: run again, it closes. `/peers-view wren ./lander` opens it on those repos only,
+  // or sets that filter on the open pane; a bare open clears the filter.
+  on('command.run', { command: 'peers-view' }, async ($, e) => {
+    const words = e.args.trim().split(/\s+/).filter(Boolean)
+    const shown = (await $.ui.panes()).some(p => p.id === PANE)
+    if (shown && !words.length) await $.ui.close({ id: PANE })
+    else {
+      const only = words.length ? terms(words, await $.session.cwd(), home) : []
+      await update($, onlyAtom, () => only)
+      // A new filter: the next poll must answer whole, not 204.
+      await update($, indexAtom, v => ({ ...v, sig: '' }))
+      if (shown) await poll($)
+      else await openPane($)
+    }
     return {}
   })
 

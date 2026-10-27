@@ -60,7 +60,8 @@ export type ViewSession = {
 }
 export type ViewEvent = { kind: 'edit' | 'commit'; at: number; a: string; t: string; sha?: string; rels: string[] }
 export type ViewRepo = { root: string; name: string; sessions: ViewSession[]; files: ViewFile[]; feed: ViewEvent[] }
-export type ViewIndex = { sig: string; repos: ViewRepo[]; error?: string }
+// only/live: set when a filter asked for some repos: its words, and every live repo's name.
+export type ViewIndex = { sig: string; repos: ViewRepo[]; error?: string; only?: string[]; live?: string[] }
 export type ViewFocus = { root: string; rel: string; mode: 'doc' | 'diff' } | null
 export type ViewBody = {
   root: string
@@ -75,7 +76,7 @@ export type ViewFold = { zoom: 1 | 2 | 3; flip: string[] }
 
 declare module 'claude-code' {
   interface PluginState {
-    peers: { peers: Peer[]; index: Shaped<ViewIndex>; focus: Shaped<ViewFocus>; body: Shaped<ViewBody>; fold: Shaped<ViewFold>; wide: boolean; ring: Record<string, string> }
+    peers: { peers: Peer[]; index: Shaped<ViewIndex>; focus: Shaped<ViewFocus>; body: Shaped<ViewBody>; fold: Shaped<ViewFold>; wide: boolean; only: string[]; ring: Record<string, string> }
   }
 }
 

@@ -11,11 +11,13 @@ import { applyHunks, keys, owner, parseDiff, statusPaths } from '../lib/lines.mj
 
 const argv = process.argv.slice(2)
 const cmd = argv[0]
-const usage = `peers status | diff [--who [file...]] | commit -m "msg" [--whole] | check | ls | ready | claim <task> | close [-r reason] [--force] | files | view | tui
+const usage = `peers status | diff [--who [file...]] | commit -m "msg" [--whole] | check | ls | ready | claim <task> | close [-r reason] [--force] | files | view [match...] | tui [match...]
 Scope: the files this session edited (ledger kept by the peers mod). In a file a peer also edits, only your hunks
 (--whole takes the file as it is). Tasks: Backlog.md (\`backlog\` on PATH, board at BACKLOG_CWD).
 view: a live page (127.0.0.1:6421) of every session's uncommitted edits, each in its author's color; /peers-view shows it in a pane.
 tui: the same view full screen in any terminal (no agent session needed).
+  match: only the repos it names. A path (., ../lander, ~/x) is that folder; a name is a repo name, part of one,
+  or a folder in the path (wren_automation = every repo in it). Same words in /peers-view <match...>.
   view --install [--host <public host>] keeps it up under launchd; view --uninstall stops that.
 Other agents: peers install codex|cursor [--project] [--uninstall] adds the hooks; the agent runs peers hook <agent>.
 Env: PEERS_SESSION overrides the session id.`
