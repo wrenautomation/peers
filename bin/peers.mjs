@@ -6,6 +6,7 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
+import { actions } from '../lib/actions.mjs'
 import { isLive, nameOf, uncommitted } from '../lib/core.mjs'
 import { boardOf } from '../lib/board.mjs'
 import { configSync, runningSync } from '../lib/io.mjs'
@@ -14,7 +15,7 @@ import { applyHunks, keys, owner, parseDiff, statusPaths } from '../lib/lines.mj
 
 const argv = process.argv.slice(2)
 const cmd = argv[0]
-const usage = `peers status | diff [--who [file...]] | commit -m "msg" [--whole] | check | ls | ready | claim <task> | close [-r reason] [--force] | files | view [match...] | tui [match...]
+const usage = `peers status | diff [--who [file...]] | commit -m "msg" [--whole] | check | ls | ready | claim <task> | close [-r reason] [--force] | log [n] | files | view [match...] | tui [match...]
 Scope: the files this session edited (ledger kept by the peers mod). In a file a peer also edits, only your hunks
 (--whole takes the file as it is). Tasks: Backlog.md by default (\`backlog\` on PATH), or Jira or your own module: README, Task boards.
 view: a live page (127.0.0.1:6421) of every session's uncommitted edits, each in its author's color; /peers-view shows it in a pane.
@@ -69,6 +70,8 @@ const root = (() => {
 process.chdir(root)
 const dir = join(homedir(), '.claude', 'peers', encodeURIComponent(root))
 const own = join(dir, `${session}.json`)
+// The action log and the board's outbox: lib/actions.mjs.
+const act = actions(join(dir, `${session}.actions.jsonl`))
 
 function die(msg, code = 1) {
   process.stderr.write(msg + '\n')
@@ -130,6 +133,32 @@ const tryBoard = async (what, f) => {
     return null
   }
 }
+// The outbox: board writes that failed go again, oldest first, before the next board call.
+const send = (call, args) => board[call](...args)
+const drain = async () => {
+  for (const r of await act.drain(send))
+    if (!r.ok) process.stderr.write(`peers: ${r.s.call} to ${r.s.args[0]} not sent${r.last ? ', gave up' : ', tries again on the next peers command'}: ${r.err}\n`)
+}
+// Live sessions in any repo that hold a ticket: a task can span repos.
+const holders = ticket => {
+  const base = join(homedir(), '.claude', 'peers')
+  const now = Date.now()
+  const running = runningSync(homedir())
+  return readdirSync(base, { withFileTypes: true })
+    .filter(d => d.isDirectory())
+    .flatMap(d =>
+      readdirSync(join(base, d.name))
+        .filter(f => f.endsWith('.json') && f !== `${session}.json`)
+        .map(f => {
+          try {
+            return JSON.parse(readFileSync(join(base, d.name, f), 'utf8'))
+          } catch {
+            return null
+          }
+        }),
+    )
+    .filter(p => p?.ticket === ticket && isLive(p, now, running))
+}
 // Line sets of a file: mine, and every live peer's that has not committed it yet.
 function lineSets(f, live) {
   const mine = { added: new Set(l.files[f]?.added ?? []), removed: new Set(l.files[f]?.removed ?? []) }
@@ -176,6 +205,7 @@ function withIndexRetry(fn) {
 }
 
 const l = load()
+if (['ready', 'claim', 'commit', 'close'].includes(cmd)) await drain()
 
 switch (cmd) {
   case 'files': {
@@ -316,7 +346,11 @@ switch (cmd) {
     const n = l.commits.at(-1).files.length
     console.log(`${sha.slice(0, 7)} ${told} (${n} file${n === 1 ? '' : 's'})`)
     for (const x of notes) console.log(`note: ${x}`)
-    if (l.ticket) await tryBoard('commit', () => board.note(l.ticket, `${sha.slice(0, 7)} ${told}`))
+    act.log('commit', { sha, files: l.commits.at(-1).files, ticket: l.ticket, t: told.split('\n')[0] })
+    if (l.ticket) {
+      const r = await act.send('note', [l.ticket, `${sha.slice(0, 7)} ${told}`], send)
+      if (!r.ok) process.stderr.write(`peers commit: note to ${l.ticket} not sent, tries again on the next peers command: ${r.err}\n`)
+    }
     break
   }
   case 'check': {
@@ -343,6 +377,7 @@ switch (cmd) {
       : existsSync(gate)
         ? spawnSync('bash', [gate, 'changed'], { cwd: wt, stdio: 'inherit' })
         : spawnSync('git', ['-C', wt, 'show', '--stat', '--oneline', 'HEAD'], { stdio: 'inherit' })
+    act.log('check', { sha: last.sha, status: r.status ?? 1 })
     process.exit(r.status ?? 1)
   }
   case 'ls': {
@@ -366,8 +401,9 @@ switch (cmd) {
     break
   }
   case 'claim': {
-    const id = argv[1]
-    if (!id) die('peers claim <task>')
+    if (!argv[1]) die('peers claim <task>')
+    // Jira keys are upper case: a trailer with `proj-1` links to nothing.
+    const id = board.key ? board.key(argv[1]) : argv[1]
     let got
     try {
       got = await board.claim(id)
@@ -379,6 +415,7 @@ switch (cmd) {
     if (got?.title) l.title = got.title
     else delete l.title
     save(l)
+    act.log('claim', { ticket: id, title: got?.title ?? null })
     console.log(`claimed ${id}`)
     break
   }
@@ -388,14 +425,39 @@ switch (cmd) {
     const last = l.commits.at(-1)
     const reason = (i > 0 ? argv[i + 1] : 'done') + (last ? ` (${last.sha.slice(0, 7)})` : '')
     if (!argv.includes('--force')) {
+      const still = holders(l.ticket)
+      if (still.length) die(`peers close: ${still.map(nameOf).join(', ')} also works on ${l.ticket}. Close it there last, or --force.`)
       const open = (await tryBoard('close', () => board.open(l.ticket))) ?? []
       if (open.length) die(`peers close: ${l.ticket} has ${open.length} unchecked item(s):\n${open.join('\n')}\n${board.openHint(l.ticket)} --force closes anyway.`)
     }
     if ((await tryBoard('close', () => board.close(l.ticket, reason))) === null && board.on()) die(`peers close: ${l.ticket} stays bound; fix the board error, then run it again.`)
+    act.log('close', { ticket: l.ticket, reason })
     console.log(`closed ${l.ticket}: ${reason}`)
     delete l.ticket
     delete l.title
     save(l)
+    break
+  }
+  case 'log': {
+    // The trace: this session's last actions, oldest first.
+    const n = Number(argv[1]) || 20
+    const sends = new Map()
+    for (const a of act.read().slice(-n * 3)) {
+      const t = new Date(a.at).toLocaleString('sv-SE').slice(5, 16)
+      if (a.op === 'send') sends.set(a.id, a)
+      const s = a.op === 'sent' ? sends.get(a.id) : null
+      const what =
+        a.op === 'send' ? null
+        : a.op === 'sent' ? `${s?.call ?? 'send'} ${s?.args?.[0] ?? ''} ${a.ok ? 'sent' : `failed: ${a.err}`}`
+        : a.op === 'commit' ? `commit ${a.sha.slice(0, 7)} ${a.t ?? ''}${a.ticket ? ` (${a.ticket})` : ''}`
+        : a.op === 'check' ? `check ${a.sha.slice(0, 7)} ${a.status === 0 ? 'passed' : `failed (${a.status})`}`
+        : a.op === 'claim' ? `claim ${a.ticket}${a.title ? ` ${a.title}` : ''}`
+        : a.op === 'close' ? `close ${a.ticket}: ${a.reason}`
+        : a.op
+      if (what) console.log(`${t}  ${what}`)
+    }
+    const p = act.pending()
+    if (p.length) console.log(`${p.length} board write(s) wait to send: ${p.map(s => `${s.call} ${s.args[0]}`).join(', ')}`)
     break
   }
   default:
