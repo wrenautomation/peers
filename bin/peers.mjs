@@ -240,7 +240,7 @@ switch (cmd) {
     if (used.includes(subject)) die(`peers commit: "${subject}" is the subject of the last commit. Write a new message.`)
     const mine = mineDirty(l)
     if (!mine.length) die('nothing of yours to commit (edited in this same command? the ledger lands after it ends: run peers commit on its own)')
-    const body = [msg, '', ...(l.ticket ? [`Ticket: ${l.ticket}`] : []), 'Co-Authored-By: Claude <noreply@anthropic.com>'].join('\n')
+    const body = [msg, '', ...(l.ticket ? [`Ticket: ${l.ticket}`] : [])].join('\n')
     // A private index built from HEAD: a peer's staged files never ride along, and the
     // update-ref below lands only if HEAD did not move under us.
     const index = git(['rev-parse', '--path-format=absolute', '--git-path', `peers-${session}.index`]).trim()
