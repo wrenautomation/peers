@@ -481,26 +481,25 @@ export const register: Register = on => {
         <Text dimColor>{` ${ago(now - p.last)}`}</Text>
       </Text>
     )
-    // Compact: name files|shared +N −N time, · between peers; name in the peer's color, +green −red, shared purple.
+    // Compact: name files|shared +N −N time per peer; name in the peer's color, +green −red, shared purple.
+    // A row too wide for the band wraps by whole peers, so no peer runs into the engine's [-] at the right.
     if (!wide)
       return (
-        <Box flexDirection="row">
+        <Box flexDirection="row" flexWrap="wrap" columnGap={3} paddingX={1}>
           <Button key="peers-band" plain onPress={() => void openPane($)}>
             {ringed(Text, ring === 'peers-band', <Text dimColor>peers</Text>)}
           </Button>
-          {peers.map(p => [
-            <Text dimColor>{' · '}</Text>,
+          {peers.map(p => (
             <Button key={`peer:${p.session}`} plain onPress={() => openPeer($, p.session)}>
               {ringed(Text, ring === `peer:${p.session}`, [<Text color={col(p.session)} bold>{p.name}</Text>, nums(p)])}
-            </Button>,
-          ])}
-          <Text> </Text>
+            </Button>
+          ))}
           <Button key="peers-wide" plain dimColor onPress={flip}>[+]</Button>
         </Box>
       )
     // Verbose: a row per peer with what it last said it did, then the files we both changed.
     return (
-      <Box flexDirection="column">
+      <Box flexDirection="column" paddingX={1} rowGap={1}>
         <Box flexDirection="row">
           <Button key="peers-band" plain onPress={() => void openPane($)}>
             {ringed(Text, ring === 'peers-band', <Text dimColor>{`peers · ${peers.length} sessions · files|shared`}</Text>)}
