@@ -156,8 +156,11 @@ test('the band shows one line, and [+] opens a row per peer', async ($, on) => {
     props: { hasSurvey: false, isWorking: false, maxRows: 20, bodyColumns: 120, scroll: { offset: 0, bodyRows: 20 }, view: {} },
   } as any)
   expect((await ui.find({ key: `peer:${S1}` }))?.text).toContain('WA-901 3|1 +4 −2')
-  // A row too wide wraps by whole peers, clear of the engine's [-]: padding at both sides, room between peers.
-  expect(await ui.find({ type: 'Box' })).toMatchObject({ props: { flexWrap: 'wrap', paddingX: 1, columnGap: 3 } })
+  // Peers wrap by whole peer left of [+]; [+] is the last child, flush right beside the engine's [-].
+  const band: any = await ui.find({ type: 'Box' })
+  expect(band).toMatchObject({ props: { width: '100%', paddingLeft: 1 } })
+  expect(band.children.at(-1)).toMatchObject({ props: { key: 'peers-wide' } })
+  expect(band.children[0]).toMatchObject({ props: { flexWrap: 'wrap', flexGrow: 1, columnGap: 3 } })
   expect((await ui.find({ type: 'Text', text: /shared: plan.md/ }))).toBeUndefined()
   // The ring on the band paints it one theme blue, so the engine's invert draws a blue bar.
   expect(JSON.stringify(await ui.find({ key: 'peers-band' }))).not.toContain('suggestion')

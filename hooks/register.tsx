@@ -482,29 +482,30 @@ export const register: Register = on => {
       </Text>
     )
     // Compact: name files|shared +N −N time per peer; name in the peer's color, +green −red, shared purple.
-    // A row too wide for the band wraps by whole peers, so no peer runs into the engine's [-] at the right.
+    // Peers wrap by whole peer in the room left of [+]; [+] sits flush right, beside the engine's [-].
     if (!wide)
       return (
-        <Box flexDirection="row" flexWrap="wrap" columnGap={3} paddingX={1}>
-          <Button key="peers-band" plain onPress={() => void openPane($)}>
-            {ringed(Text, ring === 'peers-band', <Text dimColor>peers</Text>)}
-          </Button>
-          {peers.map(p => (
-            <Button key={`peer:${p.session}`} plain onPress={() => openPeer($, p.session)}>
-              {ringed(Text, ring === `peer:${p.session}`, [<Text color={col(p.session)} bold>{p.name}</Text>, nums(p)])}
+        <Box flexDirection="row" width="100%" columnGap={2} paddingLeft={1}>
+          <Box flexDirection="row" flexWrap="wrap" flexGrow={1} flexShrink={1} columnGap={3}>
+            <Button key="peers-band" plain onPress={() => void openPane($)}>
+              {ringed(Text, ring === 'peers-band', <Text dimColor>peers</Text>)}
             </Button>
-          ))}
+            {peers.map(p => (
+              <Button key={`peer:${p.session}`} plain onPress={() => openPeer($, p.session)}>
+                {ringed(Text, ring === `peer:${p.session}`, [<Text color={col(p.session)} bold>{p.name}</Text>, nums(p)])}
+              </Button>
+            ))}
+          </Box>
           <Button key="peers-wide" plain dimColor onPress={flip}>[+]</Button>
         </Box>
       )
     // Verbose: a row per peer with what it last said it did, then the files we both changed.
     return (
-      <Box flexDirection="column" paddingX={1} rowGap={1}>
-        <Box flexDirection="row">
+      <Box flexDirection="column" width="100%" paddingLeft={1} rowGap={1}>
+        <Box flexDirection="row" justifyContent="space-between" columnGap={2}>
           <Button key="peers-band" plain onPress={() => void openPane($)}>
             {ringed(Text, ring === 'peers-band', <Text dimColor>{`peers · ${peers.length} sessions · files|shared`}</Text>)}
           </Button>
-          <Text> </Text>
           <Button key="peers-wide" plain dimColor onPress={flip}>[−]</Button>
         </Box>
         {peers.map(p => (
