@@ -1,8 +1,9 @@
 import { atom, read, update } from 'claude-code'
 import type { Register, RenderChildren, RenderElement } from 'claude-code'
-import type { Peer, ViewBody, ViewFile, ViewFocus, ViewFold, ViewIndex, ViewLine, ViewRepo, ViewSession } from '../types'
+import type { Peer, Row, Span, ViewBody, ViewFocus, ViewFold, ViewIndex } from '../types'
 import { core, dirOf, nameOf, peerLinesLost, quote, uncommitted } from '../lib/core.mjs'
 import { delta } from '../lib/lines.mjs'
+import { ADD, DEL, ago, cast, colorRule, docRow, fileHead, hunkHead, listRows } from '../lib/rows.mjs'
 
 // One checkout, many sessions. Every session keeps its own ledger file:
 //   ~/.claude/peers/<encodeURIComponent(repo root)>/<session id>.json
@@ -46,14 +47,6 @@ const lit = (n: RenderChildren): RenderChildren => {
   return { ...el, props: { ...props, color: 'suggestion' }, children: lit(el.children) }
 }
 const ringed = (Text: any, on: boolean, children: RenderChildren) => (on ? <Text color="suggestion">{lit(children)}</Text> : children)
-
-const ago = (ms: number) => {
-  const s = Math.max(1, Math.round(ms / 1000))
-  if (s < 60) return `${s}s`
-  const m = Math.round(s / 60)
-  if (m < 60) return `${m}m`
-  return `${Math.round(m / 60)}h`
-}
 
 let home = ''
 let session = ''
@@ -117,16 +110,6 @@ const withContext = (abs: string, r: any, line: string | null) => {
   return { ...r, context: [...(r.context ?? []), line] }
 }
 
-// One color per session by start order, the same rule as the page: a session keeps its color everywhere.
-const colorRule = (sessions: { id: string; started?: number }[]) => {
-  const first = new Map<string, number>()
-  for (const s of sessions) first.set(s.id, Math.min(first.get(s.id) ?? Infinity, s.started ?? 0))
-  const order = [...first.keys()].sort((a, b) => first.get(a)! - first.get(b)!)
-  return (id?: string | null) => {
-    const i = order.indexOf(id ?? '')
-    return i < 0 ? NOBODY : COLORS[i % COLORS.length]
-  }
-}
 let mineStarted: { id: string; started: number }[] = []
 
 const refreshPeers = async ($: any) => {
@@ -162,12 +145,6 @@ const refreshPeers = async ($: any) => {
 // The server builds one state for every reader (the page, each session's pane); the pane polls it.
 const PANE = 'peers'
 const VIEW = 'http://127.0.0.1:6421'
-const COLORS = ['#4a86e8', '#e8590c', '#37b24d', '#be4bdb', '#e64980', '#15aabf', '#f08c00', '#7950f2']
-const NOBODY = '#8e8e93'
-// Kind marks follow the session's color: M a filled chip, A bold, D struck. Diff signs and counts stay green and red.
-const ADD = '#7cc59a'
-const DEL = '#f07178'
-const MARK = { add: 'A', edit: 'M', delete: 'D' } as const
 const SHARED = '#a594f9'
 const MAX_LINES = 600
 
@@ -177,8 +154,6 @@ const focusAtom = atom({ plugin: 'peers', key: 'focus' } as const, null as ViewF
 const bodyAtom = atom({ plugin: 'peers', key: 'body' } as const, null as ViewBody, { shape: 'body-1' })
 let tick: { cancel: () => void } | null = null
 let spawned = false
-
-const isDoc = (rel: string) => /\.(md|mdx|markdown)$/i.test(rel)
 
 // undefined: unchanged (204); null: not found.
 const getJson = async ($: any, path: string) => {
@@ -301,117 +276,23 @@ export const register: Register = on => {
     const now = await $.clock.now()
     const fold = await read($, foldAtom)
     const ring = e.props.isFocused ? (await read($, ringAtom))[PANE] : undefined
-    // One color per session by start order, the same rule as the page: a session keeps its color in both.
-    const byId = new Map<string, ViewSession>()
-    const named = new Map<string, ViewSession>()
-    for (const s of ix.repos.flatMap(r => r.sessions)) {
-      if ((byId.get(s.id)?.updated ?? -1) < s.updated) byId.set(s.id, s)
-      if (s.title) named.set(s.id, s)
-    }
-    // A session claims its task in one repo: that name holds in every repo.
-    for (const [id, s] of named) byId.set(id, { ...byId.get(id)!, name: s.name, title: s.title })
-    const col = colorRule(ix.repos.flatMap(r => r.sessions))
-    const nameOf = (id: string) => byId.get(id)?.name ?? 'nobody'
-    const kindMark = (kind: 'add' | 'edit' | 'delete', color?: string) =>
-      kind === 'edit' ? (
-        <Text backgroundColor={color} color="black" bold>{` ${MARK.edit} `}</Text>
-      ) : (
-        <Text color={color} bold strikethrough={kind === 'delete'}>{` ${MARK[kind]} `}</Text>
-      )
+    // One color and name per session, the same rule as the page and `peers tui` (lib/rows.mjs).
+    const { col, nameOf } = cast(ix)
+    const spans = (sp: Span[]) =>
+      sp.map(x => (
+        <Text color={x.color} backgroundColor={x.bg} bold={x.bold} dimColor={x.dim} strikethrough={x.strike} underline={x.under}>
+          {x.s}
+        </Text>
+      ))
     const show = (f: ViewFocus) => async () => {
       await update($, focusAtom, () => f)
       await loadBody($)
     }
 
     if (!focus) {
-      // A group is open when the zoom reaches its depth, unless the person toggled it.
-      const isOpen = (id: string, depth: number) => fold.zoom >= depth !== fold.flip.includes(id)
       const flip = (id: string) => async () =>
         void (await update($, foldAtom, v => ({ ...v, flip: v.flip.includes(id) ? v.flip.filter(x => x !== id) : [...v.flip.slice(-200), id] })))
       const zoom = (z: 1 | 2 | 3) => async () => void (await update($, foldAtom, () => ({ zoom: z, flip: [] })))
-      // +/− in green and red; gray is for times only.
-      const nums = (a: number, d: number) => [a ? <Text color={ADD}>{`  +${a}`}</Text> : null, d ? <Text color={DEL}>{` −${d}`}</Text> : null]
-      const people = [...byId.values()].sort((a, b) => b.updated - a.updated)
-      const feed = ix.repos
-        .flatMap(r => r.feed ?? [])
-        .sort((a, b) => b.at - a.at)
-        .slice(0, 6)
-      const repoRows = (r: ViewRepo) => {
-        // A file sits under each session that owns a change in it; changes of no live session go to Unattributed.
-        const ids = new Set(r.sessions.map(s => s.id))
-        const own = (a: string | null | undefined) => (a && ids.has(a) ? a : null)
-        const groups = new Map<string | null, ViewFile[]>(r.sessions.slice().sort((a, b) => b.updated - a.updated).map(s => [s.id, []]))
-        groups.set(null, [])
-        for (const f of r.files) {
-          const by = f.changes?.length ? f.changes.map(c => own(c.a)) : f.authors.length ? f.authors.map(own) : [null]
-          for (const a of new Set(by)) groups.get(a)!.push(f)
-        }
-        const out: RenderChildren[] = []
-        // One edge: a 2-column gutter holds the fold arrow; a session's name and its file paths are in its color.
-        // Other authors of a file follow it by name, each in their own color.
-        const byRepo = new Map(r.sessions.map(s => [s.id, s]))
-        for (const [a, files] of groups) {
-          const commits = (a && byRepo.get(a)?.commits) || []
-          if (!files.length && !commits.length) continue
-          const id = `s:${r.root}:${a}`
-          const mine = (f: ViewFile) => (f.changes?.length ? f.changes.filter(c => own(c.a) === a) : [])
-          const adds = files.reduce((n, f) => n + (mine(f).length ? mine(f).reduce((m, c) => m + c.adds, 0) : f.adds), 0)
-          const dels = files.reduce((n, f) => n + (mine(f).length ? mine(f).reduce((m, c) => m + c.dels, 0) : f.dels), 0)
-          const open = isOpen(id, 2)
-          out.push(
-            <Button key={id} plain onPress={flip(id)}>
-              {ringed(Text, ring === id, [
-                <Text bold>{open ? '▼ ' : '▶ '}</Text>,
-                <Text bold color={col(a)}>{a ? nameOf(a) : 'Unattributed'}</Text>,
-                <Text>{files.length ? `  ${files.length} open` : '  nothing open'}</Text>,
-                ...nums(adds, dels),
-                commits.length ? <Text>{`  ${commits.length} commit${commits.length === 1 ? '' : 's'}`}</Text> : null,
-              ])}
-            </Button>,
-          )
-          if (!open) continue
-          for (const f of files) {
-            const cs = mine(f)
-            const said = [...new Set(cs.filter(c => c.said).map(c => c.t))]
-            const kind = f.kind ?? (f.isNew ? 'add' : 'edit')
-            out.push(
-              <Button key={`f:${a}:${r.root}/${f.rel}`} plain onPress={show({ root: r.root, rel: f.rel, mode: isDoc(f.rel) ? 'doc' : 'diff' })}>
-                {ringed(Text, ring === `f:${a}:${r.root}/${f.rel}`, [
-                  '  ',
-                  kindMark(kind, col(a)),
-                  <Text strikethrough={kind === 'delete'}>{f.rel}</Text>,
-                  ...f.authors.filter(x => own(x) !== a).map(x => <Text color={col(x)}>{`  ${nameOf(x)}`}</Text>),
-                  f.count ? <Text>{`  ${f.count} new files`}</Text> : null,
-                  ...nums(cs.length ? cs.reduce((n, c) => n + c.adds, 0) : f.adds, cs.length ? cs.reduce((n, c) => n + c.dels, 0) : f.dels),
-                  <Text dimColor>{`  ${ago(now - f.mtime)}`}</Text>,
-                  fold.zoom < 3 && said.length ? <Text>{`  ${said.join(' · ')}`}</Text> : null,
-                ])}
-              </Button>,
-            )
-            if (fold.zoom >= 3)
-              for (const c of cs)
-                out.push(
-                  <Text>
-                    {'    '}
-                    <Text color={c.said ? undefined : col(c.a)}>{c.t || 'change'}</Text>
-                    {nums(c.adds, c.dels)}
-                    <Text dimColor>{`  L${c.line}`}</Text>
-                  </Text>,
-                )
-          }
-          for (const c of commits)
-            out.push(
-              <Text key={`c:${a}:${c.sha}`}>
-                {'  '}
-                <Text color={col(a)} bold>{' ✓ '}</Text>
-                <Text color={col(a)}>{c.sha.slice(0, 8)}</Text>
-                <Text>{`  ${c.t || 'commit'}  ${c.files} file${c.files === 1 ? '' : 's'}`}</Text>
-                <Text dimColor>{`  ${ago(now - c.at)}`}</Text>
-              </Text>,
-            )
-        }
-        return out
-      }
       return (
         <Box flexDirection="column">
           <Box gap={2}>
@@ -423,80 +304,27 @@ export const register: Register = on => {
             <Text dimColor>↑↓ move · enter opens · ctrl+x ← wider · esc closes</Text>
           </Box>
           <Text> </Text>
-          {ix.error && <Text color="warning">{ix.error}</Text>}
-          {!ix.error && people.length === 0 && <Text dimColor>No live sessions.</Text>}
-          {people.map(s => (
-            <Box flexDirection="column">
-              <Text>
-                <Text bold color={col(s.id)}>{s.name}</Text>
-                {s.title ? <Text>{`  ${s.title}`}</Text> : null}
-                <Text dimColor>{` · ${ago(now - s.updated)}`}</Text>
-              </Text>
-              {s.doing ? <Text>{`  ${s.doing}`}</Text> : null}
-            </Box>
-          ))}
-          {fold.zoom >= 2 &&
-            ix.repos.map(r => {
-              const rows = repoRows(r)
-              return rows.length ? (
-                <Box flexDirection="column" marginTop={1}>
-                  <Text bold>{r.name}</Text>
-                  {rows}
-                </Box>
-              ) : null
-            })}
-          {feed.length > 0 && (
-            <Box flexDirection="column" marginTop={1}>
-              <Text bold>Activity</Text>
-              {feed.map(e => (
-                <Text>
-                  <Text color={col(e.a)}>{`${nameOf(e.a)} `}</Text>
-                  {e.kind === 'commit' ? `✓ ${e.sha ?? ''} ${e.t}` : e.t || 'Edited'}
-                  <Text dimColor>{`  ${ago(now - e.at)}`}</Text>
-                  <Text>{`  ${e.rels
-                    .slice(0, 3)
-                    .map(x => x.slice(x.lastIndexOf('/') + 1))
-                    .join(', ')}${e.rels.length > 3 ? ` +${e.rels.length - 3}` : ''}`}</Text>
-                </Text>
-              ))}
-            </Box>
+          {(listRows(ix, fold, now) as Row[]).map(r =>
+            r.press ? (
+              <Button key={r.key} plain onPress={'fold' in r.press ? flip(r.press.fold) : show(r.press.open)}>
+                {ringed(Text, ring === r.key, spans(r.spans))}
+              </Button>
+            ) : (
+              <Text key={r.key}>{r.spans.length ? spans(r.spans) : ' '}</Text>
+            ),
           )}
         </Box>
       )
     }
 
-    const repo = ix.repos.find(r => r.root === focus.root)
-    const file = repo?.files.find(x => x.rel === focus.rel)
+    const head = fileHead(ix, focus)
     const body = await read($, bodyAtom)
     const ready = body && body.root === focus.root && body.rel === focus.rel && body.mode === focus.mode
     const rows: RenderChildren[] = []
-    if (!file) rows.push(<Text dimColor>Committed or reverted: nothing uncommitted in this file now.</Text>)
+    if (!head.file) rows.push(<Text>Committed or reverted: nothing uncommitted in this file now.</Text>)
     else if (!ready) rows.push(<Text dimColor>Loading…</Text>)
-    else if (focus.mode === 'doc') {
-      // Suggestion style: added text underlined, removed text struck, both in the author's color.
-      const line = (x: ViewLine) => {
-        const c = col(x.a)
-        if (x.k === '=') return <Text bold={/^#{1,6}\s/.test(x.s)} dimColor={x.fence}>{x.s || ' '}</Text>
-        if (x.k === '~')
-          return (
-            <Text>
-              {x.pre}
-              {(x.runs ?? []).map(r =>
-                r.t === '=' ? r.s : <Text color={c} underline={r.t === '+'} strikethrough={r.t === '-'}>{r.s}</Text>,
-              )}
-            </Text>
-          )
-        return (
-          <Text>
-            {x.pre}
-            <Text color={c} underline={x.k === '+'} strikethrough={x.k === '-'}>
-              {x.s.slice(x.pre?.length ?? 0) || ' '}
-            </Text>
-          </Text>
-        )
-      }
-      for (const x of body.lines ?? []) rows.push(line(x))
-    } else {
+    else if (focus.mode === 'doc') for (const x of body.lines ?? []) rows.push(<Text>{spans(docRow(x, col))}</Text>)
+    else {
       // Claude Code's own diff: its gutters, highlighter and add/remove colors. The owner's title heads each hunk.
       let room = 90000
       for (const hunk of body.hunks ?? []) {
@@ -505,15 +333,9 @@ export const register: Register = on => {
         const source = `@@ -${hunk.old},${olds} +${hunk.new},${news} @@\n${hunk.lines.map(x => x.t + x.s).join('\n')}`
         if (source.length > room) break
         room -= source.length
-        rows.push(
-          <Text>
-            <Text bold>{hunk.t || hunk.at || `line ${hunk.new}`}</Text>
-            <Text color={col(hunk.a)}>{hunk.a ? `  ${nameOf(hunk.a)}` : ''}</Text>
-          </Text>,
-          <Code format="diff" path={focus.rel} source={source} />,
-        )
+        rows.push(<Text>{spans(hunkHead(hunk, col, nameOf))}</Text>, <Code format="diff" path={focus.rel} source={source} />)
       }
-      if (!rows.length) rows.push(<Text dimColor>No text diff (binary, empty or mode only).</Text>)
+      if (!rows.length) rows.push(<Text>No text diff (binary, empty or mode only).</Text>)
     }
     const more = rows.length - MAX_LINES
     return (
@@ -523,16 +345,10 @@ export const register: Register = on => {
           <Button plain hotkey="d" dimColor={focus.mode !== 'doc'} onPress={show({ ...focus, mode: 'doc' })}>document</Button>
           <Button plain hotkey="f" dimColor={focus.mode !== 'diff'} onPress={show({ ...focus, mode: 'diff' })}>diff</Button>
         </Box>
-        <Text>
-          {file ? kindMark(file.kind ?? 'edit', col(file.authors[0])) : null}
-          <Text bold>{`${repo?.name ?? ''}/${focus.rel}`}</Text>
-          {(file?.authors ?? []).map(a => (
-            <Text color={col(a)}>{`  ${nameOf(a)}`}</Text>
-          ))}
-        </Text>
+        <Text>{spans(head.spans)}</Text>
         <Text> </Text>
         {rows.slice(0, MAX_LINES)}
-        {more > 0 && <Text dimColor>{`${more} more lines: open \`peers view\` for the whole file.`}</Text>}
+        {more > 0 && <Text>{`${more} more lines: open \`peers view\` for the whole file.`}</Text>}
       </Box>
     )
   })

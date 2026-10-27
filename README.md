@@ -80,6 +80,7 @@ peers check                 # gate on that commit in ~/worktrees/<repo>-check
 peers close -r "shipped"   # Done + archived, summary carries the sha
 peers ls                    # every live session in this repo
 peers view                  # live page of every session's edits
+peers tui                   # the same view, full screen in a terminal
 ```
 
 `peers view` opens http://127.0.0.1:6421 (`PEERS_VIEW_PORT` to change). It shows the uncommitted edits in every repo with a live session, each line in its author's color; grey is a line no ledger holds.
@@ -92,13 +93,15 @@ peers view                  # live page of every session's edits
 - Activity: titled edits and commits (with their subjects), newest first.
 - Live: a changed file and its new lines pulse in place; scroll and folds stay. The server starts on the first call and stops 15 minutes after the last page closes.
 
-`/peers-view` in Claude Code (`/peers` is a built-in name) opens the same view in a pane, also mid-turn; Escape or `/peers-view` again closes it. It shows the legend, the zoom levels (`1` `2` `3`), files by session with their titles, and the activity. Each file shows its kind: `A` added, `M` edited, `D` deleted, in the page's colors. Enter on a file opens it; `d` and `f` switch document and diff, `b` goes back. The diff is Claude Code's own (its highlighter and colors), headed by the owner's change title. `ctrl+x ←` widens the pane. The band above the prompt opens it too. A press on one peer in the band opens the pane on that session. Authors show by name in their color; ▶ and ▼ fold a group. Each session lists its open files, then its commits (sha, subject, file count): a session that committed all its work still shows. The band counts open files only. Text is white; gray marks only times and key hints.
+`/peers-view` in Claude Code (`/peers` is a built-in name) opens the same view in a pane, also mid-turn; Escape or `/peers-view` again closes it. It shows the legend, the zoom levels (`1` `2` `3`), files by session with their titles, and the activity. Each file shows its kind: `A` added, `M` edited, `D` deleted (struck). Enter on a file opens it; `d` and `f` switch document and diff, `b` goes back. The diff is Claude Code's own (its highlighter and colors), headed by the owner's change title. `ctrl+x ←` widens the pane. The band above the prompt opens it too. A press on one peer in the band opens the pane on that session. ▶ and ▼ fold a group. Each session lists its open files, then its commits (sha, subject, file count): a session that committed all its work still shows. The band counts open files only. Only session names carry a color. File names are blue. All other text is white; gray marks only times and key hints.
 
 Up and down walk the rows with this in `~/.claude/keybindings.json` (by default they scroll, and Tab walks):
 
 ```json
 { "context": "AbovePrompt", "bindings": { "down": "abovePrompt:next", "up": "abovePrompt:previous" } }
 ``` The pane reads the same server and starts it when it is down.
+
+`peers tui` shows the pane full screen in any terminal, with no agent session: a split beside Claude Code, Codex or Cursor. It draws the same rows as the pane (`lib/rows.mjs`) with Ink, reads the same server and starts it when it is down. Keys: `1` `2` `3` zoom, ↑↓ (or `j` `k`) move, Enter opens a file or folds a group, `d` document, `f` diff, `b` back, PgUp/PgDn or space page, `g` `G` top and end, `q` quits. The diff has syntax color, line numbers and a bar in the author's color. Ink and React are bundled in `lib/vendor/ink.mjs` (MIT; licenses in `ink.LICENSE`).
 
 `peers view --install --host peers.example.com` keeps the server up under launchd (log in `~/Library/Logs/peers-view.log`); `--uninstall` stops it. Run `--install` again after a plugin update. Point a Cloudflare tunnel with Access at 127.0.0.1:6421 for that host. Requests for the public host see only repos that are public on GitHub; any other host gets 403. This Mac sees all repos.
 

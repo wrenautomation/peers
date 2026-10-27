@@ -6,15 +6,16 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
-import { nameOf } from '../lib/core.mjs'
+import { nameOf, uncommitted } from '../lib/core.mjs'
 import { applyHunks, keys, owner, parseDiff, statusPaths } from '../lib/lines.mjs'
 
 const argv = process.argv.slice(2)
 const cmd = argv[0]
-const usage = `peers status | diff [--who [file...]] | commit -m "msg" [--whole] | check | ls | ready | claim <task> | close [-r reason] [--force] | files | view
+const usage = `peers status | diff [--who [file...]] | commit -m "msg" [--whole] | check | ls | ready | claim <task> | close [-r reason] [--force] | files | view | tui
 Scope: the files this session edited (ledger kept by the peers mod). In a file a peer also edits, only your hunks
 (--whole takes the file as it is). Tasks: Backlog.md (\`backlog\` on PATH, board at BACKLOG_CWD).
 view: a live page (127.0.0.1:6421) of every session's uncommitted edits, each in its author's color; /peers-view shows it in a pane.
+tui: the same view full screen in any terminal (no agent session needed).
   view --install [--host <public host>] keeps it up under launchd; view --uninstall stops that.
 Other agents: peers install codex|cursor [--project] [--uninstall] adds the hooks; the agent runs peers hook <agent>.
 Env: PEERS_SESSION overrides the session id.`
@@ -44,6 +45,7 @@ if (cmd === 'install') {
   process.exit(0)
 }
 const session = process.env.PEERS_SESSION || process.env.CLAUDE_CODE_SESSION_ID || (await import('../lib/hook.mjs')).findSession(homedir())
+if (cmd === 'tui') await (await import('../lib/tui.mjs')).tui()
 if (cmd === 'view') {
   await (await import('../lib/view.mjs')).view()
   if (!argv.includes('--serve')) process.exit(0)
@@ -325,11 +327,13 @@ switch (cmd) {
   case 'ls': {
     const rows = [{ ...l, me: true }, ...peers()]
     const now = Date.now()
+    const dirty = dirtySet()
     for (const p of rows) {
-      const files = Object.keys(p.files)
-      const last = files.reduce((m, f) => Math.max(m, p.files[f].last), p.updated)
+      // Open files, as the band and the pane count them: dirty and not taken by their own commit since.
+      const files = Object.keys(p.files).filter(f => dirty.has(f) && uncommitted(p, f))
+      const last = Object.keys(p.files).reduce((m, f) => Math.max(m, p.files[f].last), p.updated)
       console.log(
-        `${p.me ? '*' : ' '} ${nameOf(p).padEnd(12)} ${String(files.length).padStart(3)} files  ${Math.round((now - last) / 60000)}m ago  ${p.commits.length} commits`,
+        `${p.me ? '*' : ' '} ${nameOf(p).padEnd(12)} ${String(files.length).padStart(3)} open  ${Math.round((now - last) / 60000)}m ago  ${p.commits.length} commits`,
       )
     }
     break

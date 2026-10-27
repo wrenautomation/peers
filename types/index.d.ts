@@ -54,6 +54,8 @@ export type ViewSession = {
   doing: string | null
   started: number
   updated: number
+  commitCount?: number
+  // The last five, newest first.
   commits: { sha: string; at: number; files: number; t?: string }[]
 }
 export type ViewEvent = { kind: 'edit' | 'commit'; at: number; a: string; t: string; sha?: string; rels: string[] }
@@ -76,3 +78,7 @@ declare module 'claude-code' {
     peers: { peers: Peer[]; index: Shaped<ViewIndex>; focus: Shaped<ViewFocus>; body: Shaped<ViewBody>; fold: Shaped<ViewFold>; wide: boolean; ring: Record<string, string> }
   }
 }
+
+// lib/rows.mjs: the one row model the pane and `peers tui` draw.
+export type Span = { s: string; color?: string; bg?: string; bold?: boolean; dim?: boolean; strike?: boolean; under?: boolean }
+export type Row = { key: string; spans: Span[]; press?: { fold: string } | { open: NonNullable<ViewFocus> } }
