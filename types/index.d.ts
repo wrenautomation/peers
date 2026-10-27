@@ -41,6 +41,8 @@ export type ViewFile = {
   rel: string
   authors: string[]
   isNew: boolean
+  // A folder git lists as one path: a nested repo, a submodule, a linked folder.
+  isDir?: boolean
   kind: 'add' | 'edit' | 'delete'
   count?: number
   mtime: number
