@@ -43,6 +43,10 @@ claude plugin install peers --marketplace wrenautomation/peers
 
 Answer `y` to add the marketplace, then pick the user scope. The next session links `peers` into `~/.local/bin`. Needs Claude Code 2.1.287 or newer.
 
+### Windows
+
+The next session writes `~/.local/bin/peers.cmd` (cmd, PowerShell) and `~/.local/bin/peers` (Git Bash). Put `~/.local/bin` on PATH if it is not there. Node and Git for Windows must be on PATH. `peers view --install` is macOS only: on Windows the pane, the TUI and `peers view` start the server when none answers. CI runs the unit tests on Windows.
+
 ## Other agents
 
 Codex and Cursor use hooks. Install the plugin once (it links `peers`), then add the hooks:

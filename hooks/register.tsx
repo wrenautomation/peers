@@ -2,6 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { Register, RenderChildren } from 'claude-code'
 import type { Peer, Row, Span, ViewBody, ViewFocus, ViewFold, ViewIndex } from '../types'
 import { core, dirOf, holds, idOf, nameOf, peerLinesLost, quote, uncommitted } from '../lib/core.mjs'
+import { isAbs, slash, winOf } from '../lib/path.mjs'
 import { delta } from '../lib/lines.mjs'
 import { ADD, DEL, HELP, ago, boxCols, boxWindow, boxes, cast, fit, colorRule, docRow, fileHead, gapText, gaps, helpRows, hunkHead, listRows, onlyQuery, terms } from '../lib/rows.mjs'
 
@@ -37,6 +38,7 @@ const wideAtom = atom({ plugin: 'peers', key: 'wide' } as const, false)
 const onlyAtom = atom({ plugin: 'peers', key: 'only' } as const, [] as string[])
 
 let home = ''
+let win = false
 let session = ''
 let cwdRoot: string | null = null
 const seen = new Map<string, number>() // abs path -> when this session last read it
@@ -64,7 +66,7 @@ const titleOf = (raw: string) => {
   return first.replace(/[:.]\s*$/, '').slice(0, 120).trim()
 }
 
-const absolute = async ($: any, p: string) => (p.startsWith('/') ? p : `${await $.session.cwd()}/${p}`)
+const absolute = async ($: any, p: string) => ((p = slash(p, win)), isAbs(p) ? p : `${slash(await $.session.cwd(), win)}/${p}`)
 
 // One line, only when a peer touched this file after we last read it.
 const peerLine = async ($: any, abs: string, forEdit: boolean): Promise<string | null> => {
@@ -224,10 +226,13 @@ const openPane = async ($: any) => {
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
-    home = (await $.env.get('HOME')) ?? ''
+    // Windows may set USERPROFILE and no HOME.
+    const raw = (await $.env.get('HOME')) || (await $.env.get('USERPROFILE')) || ''
+    win = winOf(raw)
+    home = slash(raw, win)
     session = await $.session.id()
     c = core({ home, session, backlog: (await $.env.get('BACKLOG_CWD')) ?? '' })
-    cwdRoot = await k($).rootOf(e.cwd)
+    cwdRoot = await k($).rootOf(slash(e.cwd, win))
     // Write around: a session's ledger is first written by its first edit or claim, never empty at start.
     if (cwdRoot) {
       const mine = await k($).loadMine(cwdRoot)
@@ -241,10 +246,18 @@ export const register: Register = on => {
         if (l?.ended && holds(l)) await k($).saveMine(l)
       }
     } catch {}
-    // `peers` on PATH: the one install step beyond /plugin install.
+    // `peers` on PATH: the one install step beyond /plugin install. Windows has no symlink without admin:
+    // a .cmd for cmd and PowerShell, an sh script for Git Bash (Claude Code's Bash tool).
     try {
-      await $.process.run(['mkdir', '-p', `${home}/.local/bin`], { timeoutMs: 5000 })
-      await $.process.run(['ln', '-sfn', `${$.plugin.root}/bin/peers.mjs`, `${home}/.local/bin/peers`], { timeoutMs: 5000 })
+      const bin = slash($.plugin.root, win) + '/bin/peers.mjs'
+      if (win) {
+        await $.process.run(['node', '-e', 'require("fs").mkdirSync(process.argv[1], { recursive: true })', `${home}/.local/bin`], { timeoutMs: 5000 })
+        await $.fs.write(`${home}/.local/bin/peers.cmd`, `@node "${bin.replace(/\//g, '\\')}" %*\r\n`)
+        await $.fs.write(`${home}/.local/bin/peers`, `#!/bin/sh\nexec node "${bin}" "$@"\n`)
+      } else {
+        await $.process.run(['mkdir', '-p', `${home}/.local/bin`], { timeoutMs: 5000 })
+        await $.process.run(['ln', '-sfn', bin, `${home}/.local/bin/peers`], { timeoutMs: 5000 })
+      }
     } catch {}
     // Fill the band now: a resumed session shows its peers before the first tick or turn.
     void refreshPeers($).catch(() => {})

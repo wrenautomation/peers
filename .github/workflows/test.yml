@@ -1,0 +1,18 @@
+# The unit tests on macOS, Linux and Windows: Windows paths (`C:\x`), no perl, no ps, no symlinks.
+name: test
+on: [push, pull_request]
+jobs:
+  unit:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: git config --global user.email t@t && git config --global user.name t
+      - run: node lib/core.test.mjs
+      - run: node lib/tui.test.mjs

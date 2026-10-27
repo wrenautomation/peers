@@ -8,6 +8,7 @@ import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
 import { isLive, nameOf, uncommitted } from '../lib/core.mjs'
 import { runningSync } from '../lib/io.mjs'
+import { slash, winOf } from '../lib/path.mjs'
 import { applyHunks, keys, owner, parseDiff, statusPaths } from '../lib/lines.mjs'
 
 const argv = process.argv.slice(2)
@@ -58,7 +59,7 @@ if (!session) die('peers: no session id. Run it from an agent session (Claude Co
 
 const root = (() => {
   try {
-    return git(['rev-parse', '--show-toplevel']).trim()
+    return slash(git(['rev-parse', '--show-toplevel']).trim(), winOf(homedir()))
   } catch {
     die(`peers: ${process.cwd()} is not in a git repo. cd into the repo you work in.`)
   }
@@ -111,11 +112,16 @@ function mineDirty(l) {
   return Object.keys(l.files).filter(f => d.has(f))
 }
 // Task board: Backlog.md. Its auto_commit records each edit in the board's git.
+// Windows: npm's backlog.cmd runs only through a shell, so each argument goes quoted for cmd.
+function backlog(args, opts) {
+  if (process.platform !== 'win32') return spawnSync('backlog', args, opts)
+  return spawnSync('backlog', args.map(a => `"${a.replace(/"/g, '""')}"`), { ...opts, shell: true, windowsHide: true })
+}
 function hasBoard() {
-  return spawnSync('backlog', ['--version'], { stdio: 'ignore' }).status === 0
+  return backlog(['--version'], { stdio: 'ignore' }).status === 0
 }
 function board(args, quiet = true) {
-  const r = spawnSync('backlog', args, { encoding: 'utf8', stdio: quiet ? 'pipe' : 'inherit' })
+  const r = backlog(args, { encoding: 'utf8', stdio: quiet ? 'pipe' : 'inherit' })
   if (r.status !== 0 && quiet) process.stderr.write(`backlog ${args.join(' ')}: ${(r.stderr || r.stdout || '').trim()}\n`)
   return r.status === 0
 }
@@ -362,7 +368,7 @@ switch (cmd) {
     const reason = (i > 0 ? argv[i + 1] : 'done') + (last ? ` (${last.sha.slice(0, 7)})` : '')
     // Big tasks carry acceptance criteria and a DoD per phase: every item is ticked before close.
     if (hasBoard() && !argv.includes('--force')) {
-      const view = spawnSync('backlog', ['task', 'view', l.ticket, '--plain'], { encoding: 'utf8' }).stdout ?? ''
+      const view = backlog(['task', 'view', l.ticket, '--plain'], { encoding: 'utf8' }).stdout ?? ''
       const open = view.split('\n').filter(x => /^\s*- \[ \] #\d+/.test(x))
       if (open.length)
         die(`peers close: ${l.ticket} has ${open.length} unchecked item(s):\n${open.join('\n')}\nTick each: backlog task edit ${l.ticket} --check-ac <n> | --check-dod <n>. --force closes anyway.`)
