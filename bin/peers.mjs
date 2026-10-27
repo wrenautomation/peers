@@ -306,10 +306,12 @@ switch (cmd) {
     }
     save(l)
     spawnSync('git', ['hook', 'run', '--ignore-missing', 'post-commit'], { stdio: 'inherit' })
+    // Co-author and session trailers add nothing to the board or the log.
+    const told = msg.replace(/^(Co-Authored-By|Claude-Session):.*\n?/gim, '').trimEnd()
     const n = l.commits.at(-1).files.length
-    console.log(`${sha.slice(0, 7)} ${msg} (${n} file${n === 1 ? '' : 's'})`)
+    console.log(`${sha.slice(0, 7)} ${told} (${n} file${n === 1 ? '' : 's'})`)
     for (const x of notes) console.log(`note: ${x}`)
-    if (l.ticket && hasBoard()) board(['task', 'edit', l.ticket, '--append-notes', `${sha.slice(0, 7)} ${msg}`])
+    if (l.ticket && hasBoard()) board(['task', 'edit', l.ticket, '--append-notes', `${sha.slice(0, 7)} ${told}`])
     break
   }
   case 'check': {
