@@ -126,6 +126,8 @@ const refreshPeers = async ($: any) => {
     for (const p of (await k($).peersOf(root)) as Ledger[]) {
       // Open files only, as the pane lists them: dirty in git and not taken by their own commit since.
       const files = Object.keys(p.files).filter(f => open.has(f) && uncommitted(p, f))
+      // Nothing open and no task: a `0|0` row says nothing.
+      if (!files.length && !p.ticket) continue
       const sharedFiles = files.filter(f => mine.files[f])
       const shared = sharedFiles.length
       const doing = files.flatMap(f => p.files[f]?.edits ?? []).reduce<{ at: number; t: string } | null>((m, x) => (!m || x.at > m.at ? x : m), null)?.t

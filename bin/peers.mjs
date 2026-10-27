@@ -6,7 +6,8 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
-import { nameOf, uncommitted } from '../lib/core.mjs'
+import { isLive, nameOf, uncommitted } from '../lib/core.mjs'
+import { runningSync } from '../lib/io.mjs'
 import { applyHunks, keys, owner, parseDiff, statusPaths } from '../lib/lines.mjs'
 
 const argv = process.argv.slice(2)
@@ -90,6 +91,7 @@ function save(l) {
 function peers() {
   if (!existsSync(dir)) return []
   const now = Date.now()
+  const running = runningSync(homedir())
   return readdirSync(dir)
     .filter(f => f.endsWith('.json') && f !== `${session}.json`)
     .map(f => {
@@ -99,7 +101,7 @@ function peers() {
         return null
       }
     })
-    .filter(l => l && !(l.ended && l.updated - l.ended < 5000) && now - l.updated < 12 * 3600 * 1000)
+    .filter(l => l && isLive(l, now, running))
 }
 function dirtySet() {
   return new Set(statusPaths(git(['status', '--porcelain', '-z', '--untracked-files=all'])))
