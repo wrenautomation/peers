@@ -367,7 +367,8 @@ switch (cmd) {
       if (open.length)
         die(`peers close: ${l.ticket} has ${open.length} unchecked item(s):\n${open.join('\n')}\nTick each: backlog task edit ${l.ticket} --check-ac <n> | --check-dod <n>. --force closes anyway.`)
     }
-    if (hasBoard() && board(['task', 'edit', l.ticket, '-s', 'Done', '--final-summary', reason])) board(['task', 'archive', l.ticket])
+    // Done stays in backlog/tasks/, so the board's Done column lists it. The archive is for dropped tasks.
+    if (hasBoard()) board(['task', 'edit', l.ticket, '-s', 'Done', '--final-summary', reason])
     console.log(`closed ${l.ticket}: ${reason}`)
     delete l.ticket
     save(l)

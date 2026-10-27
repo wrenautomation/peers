@@ -87,7 +87,7 @@ export type ViewFold = { flip: string[] }
 
 declare module 'claude-code' {
   interface PluginState {
-    peers: { peers: Peer[]; index: Shaped<ViewIndex>; focus: Shaped<ViewFocus>; body: Shaped<ViewBody>; fold: Shaped<ViewFold>; help: boolean; wide: boolean; only: string[]; ring: Record<string, string> }
+    peers: { peers: Peer[]; index: Shaped<ViewIndex>; focus: Shaped<ViewFocus>; body: Shaped<ViewBody>; fold: Shaped<ViewFold>; help: boolean; wide: boolean; only: string[]; view: 'list' | 'boxes' }
   }
 }
 

@@ -1,9 +1,9 @@
 import { atom, read, update } from 'claude-code'
-import type { Register, RenderChildren, RenderElement } from 'claude-code'
+import type { Register, RenderChildren } from 'claude-code'
 import type { Peer, Row, Span, ViewBody, ViewFocus, ViewFold, ViewIndex } from '../types'
 import { core, dirOf, holds, idOf, nameOf, peerLinesLost, quote, uncommitted } from '../lib/core.mjs'
 import { delta } from '../lib/lines.mjs'
-import { ADD, DEL, HELP, ago, cast, fit, colorRule, docRow, fileHead, gapText, gaps, helpRows, hunkHead, listRows, onlyQuery, terms } from '../lib/rows.mjs'
+import { ADD, DEL, HELP, ago, boxCols, boxes, cast, fit, colorRule, docRow, fileHead, gapText, gaps, helpRows, hunkHead, listRows, onlyQuery, terms } from '../lib/rows.mjs'
 
 // One checkout, many sessions. Every session keeps its own ledger file:
 //   ~/.claude/peers/<encodeURIComponent(repo root)>/<session id>.json
@@ -34,20 +34,7 @@ const EDIT_TOOLS = ['Edit', 'Write', 'NotebookEdit'] as const
 const peersAtom = atom({ plugin: 'peers', key: 'peers' } as const, [] as Peer[])
 // The band: one compact line, or with [+] a row per peer.
 const wideAtom = atom({ plugin: 'peers', key: 'wide' } as const, false)
-// The element each site's focus ring is on, by requestId.
 const onlyAtom = atom({ plugin: 'peers', key: 'only' } as const, [] as string[])
-const ringAtom = atom({ plugin: 'peers', key: 'ring' } as const, {} as Record<string, string>)
-
-// The engine's focus inverts a Button; mixed and dim colors invert to a gray bar.
-// One theme blue under the ring inverts to a blue bar, as Claude Code's own.
-const lit = (n: RenderChildren): RenderChildren => {
-  if (Array.isArray(n)) return n.map(lit)
-  if (!n || typeof n !== 'object' || (n as RenderElement).type !== 'Text') return n
-  const el = n as any
-  const { backgroundColor: _, dimColor: __, ...props } = el.props ?? {}
-  return { ...el, props: { ...props, color: 'suggestion' }, children: lit(el.children) }
-}
-const ringed = (Text: any, on: boolean, children: RenderChildren) => (on ? <Text color="suggestion">{lit(children)}</Text> : children)
 
 let home = ''
 let session = ''
@@ -161,6 +148,8 @@ const MAX_LINES = 600
 const indexAtom = atom({ plugin: 'peers', key: 'index' } as const, { sig: '', repos: [] } as ViewIndex, { shape: 'index-2' })
 const foldAtom = atom({ plugin: 'peers', key: 'fold' } as const, { flip: [] } as ViewFold, { shape: 'fold-1' })
 const helpAtom = atom({ plugin: 'peers', key: 'help' } as const, false)
+// The pane's list, or one box per session (v), as `peers tui`.
+const viewAtom = atom({ plugin: 'peers', key: 'view' } as const, 'list' as 'list' | 'boxes')
 const focusAtom = atom({ plugin: 'peers', key: 'focus' } as const, null as ViewFocus, { shape: 'focus-1' })
 const bodyAtom = atom({ plugin: 'peers', key: 'body' } as const, null as ViewBody, { shape: 'body-1' })
 let tick: { cancel: () => void } | null = null
@@ -214,6 +203,7 @@ const poll = async ($: any) => {
 const openPeer = async ($: any, id: string) => {
   await openPane($)
   await update($, focusAtom, () => null)
+  await update($, viewAtom, () => 'list')
   const ids = (await read($, indexAtom)).repos.some(r => r.sessions.some(s => s.id === id)) ? [`s:${id}`] : []
   if (!ids.length) return
   await update($, foldAtom, v => ({ ...v, flip: v.flip.filter(x => !ids.includes(x)) }))
@@ -286,21 +276,12 @@ export const register: Register = on => {
     return next(e)
   })
 
-  // Keep where each of our sites' focus ring is, so the drawing can light that row.
-  on('ui.focus', async ($, e, next) => {
-    const r = await next(e)
-    if (!r.deny && (e.component === 'AbovePrompt' || e.requestId === PANE))
-      await update($, ringAtom, m => ({ ...m, [e.requestId]: e.element ?? '' }))
-    return r
-  })
-
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text, Button, Code } = $.ui.resolve(e)
     const ix = await read($, indexAtom)
     const focus = await read($, focusAtom)
     const now = await $.clock.now()
     const fold = await read($, foldAtom)
-    const ring = e.props.isFocused ? (await read($, ringAtom))[PANE] : undefined
     // One color and name per session, the same rule as the page and `peers tui` (lib/rows.mjs).
     const { col, nameOf } = cast(ix)
     const spans = (sp: Span[]) =>
@@ -334,6 +315,43 @@ export const register: Register = on => {
         </Box>
       )
 
+    const view = await read($, viewAtom)
+    const viewKey = (
+      <Button key="view" plain hotkey="v" dimColor onPress={async () => void (await update($, viewAtom, v => (v === 'boxes' ? 'list' : 'boxes')))}>
+        {view === 'boxes' ? 'list' : 'boxes'}
+      </Button>
+    )
+    if (!focus && view === 'boxes') {
+      // One box per session in 1 to 3 columns; its name is the press: the list, on that session.
+      const cols = e.props.bodyColumns - 1
+      const n = boxCols(cols)
+      const bw = Math.floor(cols / n)
+      const all = boxes(ix, now, bw - 4) as { id: string; color: string; wait: boolean; rows: Row[] }[]
+      return (
+        <Box flexDirection="column">
+          <Box gap={2}>
+            {helpKey}
+            {viewKey}
+            <Text dimColor>↑↓ move · enter opens · esc closes</Text>
+          </Box>
+          <Text> </Text>
+          {all.length === 0 && <Text dimColor>No sessions.</Text>}
+          <Box flexDirection="row" flexWrap="wrap">
+            {all.map(b => (
+              <Box key={`box:${b.id}`} flexDirection="column" width={bw} borderStyle="round" borderColor={b.wait ? b.color : '#555555'} paddingX={1}>
+                <Button key={`box:${b.id}`} plain onPress={() => openPeer($, b.id)}>
+                  {spans(b.rows[0].spans)}
+                </Button>
+                {b.rows.slice(1).map(r => (
+                  <Text key={r.key}>{r.spans.length ? spans(r.spans) : ' '}</Text>
+                ))}
+              </Box>
+            ))}
+          </Box>
+        </Box>
+      )
+    }
+
     if (!focus) {
       const flip = (id: string) => async () =>
         void (await update($, foldAtom, v => ({ ...v, flip: v.flip.includes(id) ? v.flip.filter(x => x !== id) : [...v.flip.slice(-200), id] })))
@@ -347,7 +365,7 @@ export const register: Register = on => {
           <Box key={`row:${r.key}`} flexDirection="row" flexWrap="wrap" paddingLeft={r.indent ?? 0}>
             {lead.length > 0 && <Text>{spans(lead)}</Text>}
             <Button key={r.key} plain onPress={'fold' in r.press! ? flip(r.press.fold) : show(r.press!.open)}>
-              {ringed(Text, ring === r.key, spans(name))}
+              {spans(name)}
             </Button>
             {tail.map((x, i) => (
               <Text key={i}>{spans([x])}</Text>
@@ -359,6 +377,7 @@ export const register: Register = on => {
         <Box flexDirection="column">
           <Box gap={2}>
             {helpKey}
+            {viewKey}
             <Text dimColor>↑↓ move · enter opens · esc closes</Text>
           </Box>
           <Text> </Text>
@@ -534,7 +553,6 @@ export const register: Register = on => {
     const ix = await read($, indexAtom)
     const col = colorRule(ix.repos.length ? ix.repos.flatMap(r => r.sessions) : [...mineStarted, ...peers.map(p => ({ id: p.session, started: p.started }))])
     const wide = await read($, wideAtom)
-    const ring = (await read($, ringAtom))[e.requestId]
     const flip = () => void update($, wideAtom, w => !w)
     // nums as plain text, to measure the row; a peer's row (name, nums, title, what it last did) takes at most 2 rows.
     const numsText = (p: Peer) => ` ${p.files}|${p.shared}${p.adds ? ` +${p.adds}` : ''}${p.dels ? ` −${p.dels}` : ''} ${ago(now - p.last)}`
@@ -551,7 +569,7 @@ export const register: Register = on => {
     // Only the name is a Button: the pointer lights the name alone, not the counts or the title.
     const name = (p: Peer) => (
       <Button key={`peer:${p.session}`} plain onPress={() => openPeer($, p.session)}>
-        {ringed(Text, ring === `peer:${p.session}`, <Text color={col(p.session)} bold>{p.name}</Text>)}
+        <Text color={col(p.session)} bold>{p.name}</Text>
         {p.ticket ? <Text color={col(p.session)}>{` ${p.ticket}`}</Text> : null}
       </Button>
     )
@@ -562,7 +580,7 @@ export const register: Register = on => {
         <Box flexDirection="row" width="100%" columnGap={2} paddingLeft={1}>
           <Box flexDirection="row" flexWrap="wrap" flexGrow={1} flexShrink={1} columnGap={3}>
             <Button key="peers-band" plain onPress={() => void openPane($)}>
-              {ringed(Text, ring === 'peers-band', <Text dimColor>peers</Text>)}
+              <Text dimColor>peers</Text>
             </Button>
             {peers.map(p => (
               <Box key={`c:${p.session}`} flexDirection="row">
@@ -579,7 +597,7 @@ export const register: Register = on => {
       <Box flexDirection="column" width="100%" paddingLeft={1}>
         <Box flexDirection="row" justifyContent="space-between" columnGap={2}>
           <Button key="peers-band" plain onPress={() => void openPane($)}>
-            {ringed(Text, ring === 'peers-band', <Text dimColor>{`peers · ${peers.length} sessions · files|shared`}</Text>)}
+            <Text dimColor>{`peers · ${peers.length} sessions · files|shared`}</Text>
           </Button>
           <Button key="peers-wide" plain dimColor onPress={flip}>[−]</Button>
         </Box>

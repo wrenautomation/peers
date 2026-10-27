@@ -118,6 +118,12 @@ test('the pane lists files and opens one as a document and a diff', async ($, on
     expect(await ui.find({ key: `f:${S1}:/r/lab/plan.md` })).toBeUndefined()
     await ui.press({ key: `s:${S1}` })
     // ? shows the keys; a second ? closes them.
+    // v: one box per session; a press on its name goes back to the list on that session.
+    await ui.press({ key: 'view' })
+    expect((await ui.find({ key: `box:${S1}` }))?.text).toContain('launch')
+    expect(await ui.find({ key: `row:s:${S1}` })).toBeUndefined()
+    await ui.press({ key: `box:${S1}` })
+    expect(await ui.find({ key: `row:s:${S1}` })).toBeDefined()
     await ui.press({ key: 'help' })
     expect(await ui.find({ type: 'Text', text: /open a file, or fold a session/ })).toBeDefined()
     await ui.press({ key: 'help' })
@@ -187,12 +193,10 @@ test('the band shows one line, and [+] opens a row per peer', async ($, on) => {
   expect(band.children.at(-1)).toMatchObject({ props: { key: 'peers-wide' } })
   expect(band.children[0]).toMatchObject({ props: { flexWrap: 'wrap', flexGrow: 1, columnGap: 3 } })
   expect((await ui.find({ type: 'Text', text: /shared: plan.md/ }))).toBeUndefined()
-  // The ring on the band paints it one theme blue, so the engine's invert draws a blue bar.
-  expect(JSON.stringify(await ui.find({ key: 'peers-band' }))).not.toContain('suggestion')
+  // The ring leaves the band's own colors: the engine inverts them, as the pointer does.
+  const before = JSON.stringify(await ui.find({ key: 'peers-band' }))
   await $.ui.focus({ component: 'AbovePrompt', requestId: 'band', plugin: 'peers', element: 'peers-band', origin: { kind: 'person' } })
-  const lit = JSON.stringify(await ui.find({ key: 'peers-band' }))
-  expect(lit).toContain('suggestion')
-  expect(lit).not.toContain('dimColor":true')
+  expect(JSON.stringify(await ui.find({ key: 'peers-band' }))).toBe(before)
   // A press on one peer opens the pane on that session's group.
   await ui.press({ key: `peer:${S1}` })
   expect(opens[0]).toMatchObject({ id: 'peers', focus: true })
