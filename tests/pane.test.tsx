@@ -96,7 +96,8 @@ test('the pane lists files and opens one as a document and a diff', async ($, on
     // Sessions open: the file under each session that owns a change in it, as repo/path, with the said title.
     expect(await ui.find({ key: `f:${S2}:/r/lab/plan.md` })).toBeDefined()
     expect((await ui.find({ key: `row:f:${S1}:/r/lab/plan.md` }))?.text).toContain('lab/plan.md')
-    expect((await ui.find({ key: `row:f:${S1}:/r/lab/plan.md` }))?.text).toContain('Move the launch to Monday')
+    // The file's title heads its group, first in the row.
+    expect((await ui.find({ key: `row:g:${S1}:Move the launch to Monday` }))?.text).toMatch(/^▼ Move the launch to Monday/)
     // Two sessions changed plan.md: it shows under Shared with both names.
     const shared = (await ui.find({ key: 'row:x:/r/lab/plan.md' }))?.text ?? ''
     expect(shared).toContain('launch')
