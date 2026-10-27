@@ -3,7 +3,7 @@ import type { Register, RenderChildren } from 'claude-code'
 import type { Peer, Row, Span, ViewBody, ViewFocus, ViewFold, ViewIndex } from '../types'
 import { core, dirOf, holds, idOf, nameOf, peerLinesLost, quote, uncommitted } from '../lib/core.mjs'
 import { delta } from '../lib/lines.mjs'
-import { ADD, DEL, HELP, ago, boxCols, boxes, cast, fit, colorRule, docRow, fileHead, gapText, gaps, helpRows, hunkHead, listRows, onlyQuery, terms } from '../lib/rows.mjs'
+import { ADD, DEL, HELP, ago, boxCols, boxWindow, boxes, cast, fit, colorRule, docRow, fileHead, gapText, gaps, helpRows, hunkHead, listRows, onlyQuery, terms } from '../lib/rows.mjs'
 
 // One checkout, many sessions. Every session keeps its own ledger file:
 //   ~/.claude/peers/<encodeURIComponent(repo root)>/<session id>.json
@@ -150,6 +150,9 @@ const foldAtom = atom({ plugin: 'peers', key: 'fold' } as const, { flip: [] } as
 const helpAtom = atom({ plugin: 'peers', key: 'help' } as const, false)
 // The pane's list, or one box per session (v), as `peers tui`.
 const viewAtom = atom({ plugin: 'peers', key: 'view' } as const, 'list' as 'list' | 'boxes')
+// The element the pane's focus is on, and each box's scroll by session id: u and n scroll the focused box.
+const atAtom = atom({ plugin: 'peers', key: 'at' } as const, '')
+const scrolledAtom = atom({ plugin: 'peers', key: 'scrolled' } as const, {} as Record<string, number>)
 const focusAtom = atom({ plugin: 'peers', key: 'focus' } as const, null as ViewFocus, { shape: 'focus-1' })
 const bodyAtom = atom({ plugin: 'peers', key: 'body' } as const, null as ViewBody, { shape: 'body-1' })
 let tick: { cancel: () => void } | null = null
@@ -276,6 +279,12 @@ export const register: Register = on => {
     return next(e)
   })
 
+  on('ui.focus', async ($, e, next) => {
+    const r = await next(e)
+    if (!r.deny && e.requestId === PANE) await update($, atAtom, () => e.element ?? '')
+    return r
+  })
+
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text, Button, Code } = $.ui.resolve(e)
     const ix = await read($, indexAtom)
@@ -326,23 +335,35 @@ export const register: Register = on => {
       const cols = e.props.bodyColumns - 1
       const n = boxCols(cols)
       const bw = Math.floor(cols / n)
-      const all = boxes(ix, now, bw - 4) as { id: string; color: string; wait: boolean; rows: Row[] }[]
+      const all = boxes(ix, now, bw - 4) as { id: string; color: string; wait: boolean; head: Row[]; body: Row[] }[]
+      // One height for every box: the whole room for one line of boxes, else half.
+      const room = Math.max(8, e.props.scroll.bodyRows - 3)
+      const tall = all.length <= n ? room : Math.max(10, Math.floor(room / 2))
+      const scrolled = await read($, scrolledAtom)
+      const win = (b: (typeof all)[number]) => boxWindow(b, tall - 2, scrolled[b.id] ?? 0, bw - 4) as { rows: Row[]; off: number; max: number }
+      const at = await read($, atAtom)
+      const scroll = (d: number) => async () => {
+        const b = all.find(x => at === `box:${x.id}`) ?? all[0]
+        if (b) await update($, scrolledAtom, v => ({ ...v, [b.id]: Math.max(0, Math.min(win(b).max, (v[b.id] ?? 0) + d)) }))
+      }
       return (
         <Box flexDirection="column">
           <Box gap={2}>
             {helpKey}
             {viewKey}
-            <Text dimColor>↑↓ move · enter opens · esc closes</Text>
+            <Button key="box-up" plain hotkey="u" dimColor onPress={scroll(-3)}>up</Button>
+            <Button key="box-down" plain hotkey="n" dimColor onPress={scroll(3)}>down</Button>
+            <Text dimColor>u n scroll the focused box · enter opens · esc closes</Text>
           </Box>
           <Text> </Text>
           {all.length === 0 && <Text dimColor>No sessions.</Text>}
           <Box flexDirection="row" flexWrap="wrap">
             {all.map(b => (
-              <Box key={`box:${b.id}`} flexDirection="column" width={bw} borderStyle="round" borderColor={b.wait ? b.color : '#555555'} paddingX={1}>
+              <Box key={`box:${b.id}`} flexDirection="column" width={bw} height={tall} overflow="hidden" borderStyle="round" borderColor={b.wait || at === `box:${b.id}` ? b.color : '#555555'} paddingX={1}>
                 <Button key={`box:${b.id}`} plain onPress={() => openPeer($, b.id)}>
-                  {spans(b.rows[0].spans)}
+                  {spans(b.head[0].spans)}
                 </Button>
-                {b.rows.slice(1).map(r => (
+                {win(b).rows.slice(1).map(r => (
                   <Text key={r.key}>{r.spans.length ? spans(r.spans) : ' '}</Text>
                 ))}
               </Box>

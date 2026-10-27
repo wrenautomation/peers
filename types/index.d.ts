@@ -35,10 +35,12 @@ export type ViewHunk = {
   at: string
   t: string
   said: boolean
+  // When its author said it: the edit's time. Only on a said title.
+  when?: number
   a: string | null
   lines: { t: ' ' | '+' | '-'; s: string; a?: string | null }[]
 }
-export type ViewChange = { line: number; t: string; said: boolean; a: string | null; adds: number; dels: number }
+export type ViewChange = { line: number; t: string; said: boolean; when?: number; a: string | null; adds: number; dels: number }
 export type ViewFile = {
   rel: string
   authors: string[]
@@ -87,7 +89,7 @@ export type ViewFold = { flip: string[] }
 
 declare module 'claude-code' {
   interface PluginState {
-    peers: { peers: Peer[]; index: Shaped<ViewIndex>; focus: Shaped<ViewFocus>; body: Shaped<ViewBody>; fold: Shaped<ViewFold>; help: boolean; wide: boolean; only: string[]; view: 'list' | 'boxes' }
+    peers: { peers: Peer[]; index: Shaped<ViewIndex>; focus: Shaped<ViewFocus>; body: Shaped<ViewBody>; fold: Shaped<ViewFold>; help: boolean; wide: boolean; only: string[]; view: 'list' | 'boxes'; at: string; scrolled: Record<string, number> }
   }
 }
 
