@@ -133,22 +133,27 @@ Each edit records the lines it added and removed (`lib/lines.mjs`). Only distinc
 Set `board` in `~/.claude/peers/config.json`. Only the `peers` CLI talks to the board. `peers claim` keeps the task's title in the ledger, so the pane and the view need no board access and no token.
 
 - `"backlog"` (default): Backlog.md.
-- `"jira"`: Jira Cloud or Data Center, REST v2. The token comes only from env, never from the config:
-  - Cloud: `JIRA_EMAIL` and `JIRA_API_TOKEN` (an Atlassian API token).
-  - Data Center: `JIRA_API_TOKEN` (a personal access token), no `JIRA_EMAIL`.
+- `"jira"`: Jira, by one of two ways, set in `jira.via`:
+  - `"acli"` (default): [Atlassian's CLI](https://developer.atlassian.com/cloud/acli/guides/install-acli/). Sign in once with `acli jira auth login`; peers uses that login and holds no token. The issue moves to the status named `claim` or `close`.
 
-  ```json
-  { "board": "jira", "jira": { "url": "https://acme.atlassian.net", "jql": "project = PROJ AND assignee = currentUser() AND statusCategory = \"To Do\"", "claim": "In Progress", "close": "Done", "assign": true } }
-  ```
+    ```json
+    { "board": "jira", "jira": { "jql": "project = PROJ AND assignee = currentUser() AND statusCategory = \"To Do\"", "claim": "In Progress", "close": "Done" } }
+    ```
 
-  `ready` runs the JQL (default: your To Do issues). `claim` moves the issue to `claim` (a transition name or a status name, else the first In Progress status) and assigns it to you. Each commit adds a comment with its sha and subject. `close` comments the reason, then moves the issue to `close` (else the first Done status).
+  - `"rest"`: REST v2, for Cloud or Data Center, with `url`. The token comes only from env, never from the config. Cloud: `JIRA_EMAIL` and `JIRA_API_TOKEN` (an Atlassian API token). Data Center: `JIRA_API_TOKEN` (a personal access token), no `JIRA_EMAIL`. Here `claim` and `close` may name a transition or a status; with no match, the first status of the right category.
+
+    ```json
+    { "board": "jira", "jira": { "via": "rest", "url": "https://acme.atlassian.net" } }
+    ```
+
+  `ready` runs the JQL (default: your To Do issues). `claim` moves the issue to `claim` (default In Progress) and assigns it to you (`"assign": false` skips that). Each commit adds a comment with its sha and subject. `close` comments the reason, then moves the issue to `close` (default Done). A status move that fails only warns.
 - A path to an `.mjs` file, relative to the config's folder: its default export takes the config and returns `{ ready, claim, note, open, close }`. Any it leaves out does nothing. `lib/board.mjs` has the two built-in ones as examples.
 
 Jira links commits, branches and PRs that name an issue key, once your Jira site has the GitHub (or GitLab, Bitbucket) app. Each `peers commit` carries a `Ticket: <key>` trailer, so its commits show on the issue with no setup in peers. Put the key in the PR title, so a squash merge commit names it too.
 
 `check` in the config sets what `peers check` runs, as a shell line in the worktree (`"check": "npm test"`). Without it: `scripts/gates.sh changed` through bash, else the commit's stat. `peers check` tests your commit alone, without the peers' uncommitted hunks that your working tree also holds. A commit that needs a peer's hunk to pass fails there, not later in CI.
 
-Why one adapter in JS: the other choices were shell command lines in the config (no code, but one process per title and fragile quoting, worst on Windows) and an external CLI per tracker (jira-cli: an extra install, often blocked on work laptops). REST over Node's `fetch` needs nothing else installed and runs the same on Windows.
+Why adapters in JS: the other choice was shell command lines in the config (no code, but fragile quoting, worst on Windows). Jira has two because work laptops differ: acli reuses the login you already have; REST needs nothing installed.
 
 ## Limits
 
