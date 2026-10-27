@@ -131,6 +131,12 @@ test('the band shows one line, and [+] opens a row per peer', async ($, on) => {
   // A peer the ledgers gave: the band reads it from state.
   const PEERS = [{ session: S1, name: 'WA-901', files: 3, shared: 1, last: 5_000, adds: 4, dels: 2, doing: 'Move the launch to Monday', sharedFiles: ['plan.md'] }]
   on('ui.focus', () => ({}))
+  on('http.fetch', () => ({ value: { status: 200, ok: true, headers: {}, text: JSON.stringify(INDEX) } }))
+  const opens: any[] = []
+  on('ui.open', (_, e) => {
+    opens.push(e)
+    return { value: { isPlaced: true } }
+  })
   on('state.get', ($, e: any, next) => (JSON.stringify(e).includes('"peers"}') || e.key === 'peers' ? { value: { value: PEERS, version: 1 } } : next(e)))
   const ui = await $.ui.mount({
     plugin: 'peers',
@@ -139,7 +145,7 @@ test('the band shows one line, and [+] opens a row per peer', async ($, on) => {
     surface: 'terminal',
     props: { hasSurvey: false, isWorking: false, maxRows: 20, bodyColumns: 120, scroll: { offset: 0, bodyRows: 20 }, view: {} },
   } as any)
-  expect((await ui.find({ key: 'peers-band' }))?.text).toContain('WA-901 3|1 +4 −2')
+  expect((await ui.find({ key: `peer:${S1}` }))?.text).toContain('WA-901 3|1 +4 −2')
   expect((await ui.find({ type: 'Text', text: /shared: plan.md/ }))).toBeUndefined()
   // The ring on the band paints it one theme blue, so the engine's invert draws a blue bar.
   expect(JSON.stringify(await ui.find({ key: 'peers-band' }))).not.toContain('suggestion')
@@ -147,6 +153,9 @@ test('the band shows one line, and [+] opens a row per peer', async ($, on) => {
   const lit = JSON.stringify(await ui.find({ key: 'peers-band' }))
   expect(lit).toContain('suggestion')
   expect(lit).not.toContain('dimColor":true')
+  // A press on one peer opens the pane on that session's group.
+  await ui.press({ key: `peer:${S1}` })
+  expect(opens[0]).toMatchObject({ id: 'peers', focus: true })
   await ui.press({ key: 'peers-wide' })
   expect((await ui.find({ type: 'Text', text: /Move the launch to Monday/ }))?.text).toContain('WA-901')
   expect((await ui.find({ type: 'Text', text: /shared: plan.md/ }))).toBeDefined()

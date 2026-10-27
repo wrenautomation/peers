@@ -374,6 +374,16 @@ const poll = async ($: any) => {
   }
 }
 
+// One peer from the band: the pane on the file list, that session's group open, the ring on it.
+const openPeer = async ($: any, id: string) => {
+  await openPane($)
+  await update($, focusAtom, () => null)
+  const ids = (await read($, indexAtom)).repos.filter(r => r.sessions.some(s => s.id === id)).map(r => `s:${r.root}:${id}`)
+  if (!ids.length) return
+  await update($, foldAtom, v => ({ ...v, flip: v.zoom >= 2 ? v.flip.filter(x => !ids.includes(x)) : [...new Set([...v.flip, ...ids])] }))
+  await $.ui.focus({ requestId: PANE, key: ids[0] }).catch(() => {})
+}
+
 const openPane = async ($: any) => {
   // A view the person calls up and dismisses, as the agents view: it takes the keys, Escape closes it.
   // Open before any await: a press counts as the person's ask only while its handler runs.
@@ -889,17 +899,14 @@ export const register: Register = on => {
       return (
         <Box flexDirection="row">
           <Button key="peers-band" plain onPress={() => void openPane($)}>
-            {ringed(Text, ring === 'peers-band', [
-              <Text dimColor>peers</Text>,
-              ...peers.map(p => (
-                <Text key={p.name}>
-                  <Text dimColor>{' · '}</Text>
-                  <Text color={col(p.session)} bold>{p.name}</Text>
-                  {nums(p)}
-                </Text>
-              )),
-            ])}
+            {ringed(Text, ring === 'peers-band', <Text dimColor>peers</Text>)}
           </Button>
+          {peers.map(p => [
+            <Text dimColor>{' · '}</Text>,
+            <Button key={`peer:${p.session}`} plain onPress={() => openPeer($, p.session)}>
+              {ringed(Text, ring === `peer:${p.session}`, [<Text color={col(p.session)} bold>{p.name}</Text>, nums(p)])}
+            </Button>,
+          ])}
           <Text> </Text>
           <Button key="peers-wide" plain dimColor onPress={flip}>[+]</Button>
         </Box>
@@ -916,11 +923,17 @@ export const register: Register = on => {
         </Box>
         {peers.map(p => (
           <Box key={`w:${p.session}`} flexDirection="column">
-            <Text>
-              <Text color={col(p.session)} bold>{p.name}</Text>
-              {nums(p)}
-              {p.doing ? <Text dimColor>{`  ${p.doing}`}</Text> : null}
-            </Text>
+            <Button key={`peer:${p.session}`} plain onPress={() => openPeer($, p.session)}>
+              {ringed(
+                Text,
+                ring === `peer:${p.session}`,
+                <Text>
+                  <Text color={col(p.session)} bold>{p.name}</Text>
+                  {nums(p)}
+                  {p.doing ? <Text dimColor>{`  ${p.doing}`}</Text> : null}
+                </Text>,
+              )}
+            </Button>
             {p.sharedFiles?.length ? <Text color={SHARED}>{`  shared: ${p.sharedFiles.join(', ')}`}</Text> : null}
           </Box>
         ))}
