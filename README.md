@@ -155,7 +155,7 @@ All of it stays on this machine; nothing goes to a cloud. A ledger keeps at most
 
 ## Hunks
 
-Each edit records the lines it added and removed (`lib/lines.mjs`). Only distinctive lines count: four or more characters with a letter or digit. A `}` could be anyone's. `peers commit` splits a shared file into `git diff -U0` hunks. A hunk is the peer's when it holds their lines and none of yours. Every other hunk is yours. The commit is built in a private index from HEAD: a peer's staged files never ride along. It lands with a compare-and-swap on HEAD, and builds again if a peer committed meanwhile. `--whole` takes the file as it is.
+Each edit records the lines it added and removed (`lib/lines.mjs`). Only distinctive lines count: four or more characters with a letter or digit. A `}` could be anyone's. `peers commit` splits a shared file into `git diff -U0` hunks. A hunk is the peer's when it holds their lines and none of yours. Every other hunk is yours. The commit is built in a private index from HEAD: a peer's staged files never ride along. It lands with a compare-and-swap on HEAD, and builds again if a peer committed meanwhile. `--whole` takes the file as it is. A peer holds a file only while its lines still differ from HEAD: a commit by any route (`git commit`, a push script) frees it (0.17.3).
 
 ## Task boards
 

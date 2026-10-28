@@ -7,12 +7,12 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
 import { actions } from '../lib/actions.mjs'
-import { isLive, nameOf, uncommitted } from '../lib/core.mjs'
+import { holding, isLive, nameOf, uncommitted } from '../lib/core.mjs'
 import { boardOf } from '../lib/board.mjs'
 import { configSync, runningSync } from '../lib/io.mjs'
 import { slash, winOf } from '../lib/path.mjs'
 import { platform } from '../lib/platform.mjs'
-import { applyHunks, keys, owner, parseDiff, statusPaths } from '../lib/lines.mjs'
+import { applyHunks, delta, keys, owner, parseDiff, statusPaths } from '../lib/lines.mjs'
 
 const argv = process.argv.slice(2)
 const cmd = argv[0]
@@ -164,12 +164,15 @@ const holders = ticket => {
     .filter(p => p?.ticket === ticket && isLive(p, now, running))
 }
 // Line sets of a file: mine, and every live peer's that has not committed it yet.
-function lineSets(f, live) {
+// f's lines that differ from HEAD: a peer whose lines are all in HEAD (committed by any route) holds nothing.
+const liveOf = f => delta(spawnSync('git', ['show', `HEAD:${f}`], { encoding: 'utf8' }).stdout ?? '', existsSync(f) ? readFileSync(f, 'utf8') : '')
+function lineSets(f, peers) {
   const mine = { added: new Set(l.files[f]?.added ?? []), removed: new Set(l.files[f]?.removed ?? []) }
   const theirs = { added: new Set(), removed: new Set(), who: [], blind: false }
-  for (const p of live) {
+  let live
+  for (const p of peers) {
     const e = p.files[f]
-    if (!e || p.commits.some(c => c.at >= e.last && c.files.includes(f))) continue
+    if (!e || !holding(p, f, (live ??= liveOf(f)))) continue
     theirs.who.push(nameOf(p))
     // A peer on an old mod, or whose edits held no distinctive line: nothing to split by.
     if (!e.added?.length && !e.removed?.length) theirs.blind = true
