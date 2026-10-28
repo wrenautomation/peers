@@ -301,10 +301,12 @@ switch (cmd) {
     const used = [git(['log', '-1', '--format=%s', 'HEAD']).trim(), held ? spawnSync('git', ['log', '-1', '--format=%s', last], { encoding: 'utf8' }).stdout?.trim() : '']
     if (used.includes(subject)) die(`peers commit: "${subject}" is the subject of the last commit. Write a new message.`)
     // `-- <paths>`: only these of your files (with --whole, a regenerated file stays out).
+    // --whole with paths: every dirty file under them, in the ledger or not (an untracked file it missed).
     const dash = argv.indexOf('--')
-    const only = dash > 0 ? new Set(argv.slice(dash + 1).map(p => slash(p, winOf(p)).replace(/^\.\//, ''))) : null
-    const mine = mineDirty(l).filter(f => !only || only.has(f))
-    if (!mine.length) die(only ? `none of ${[...only].join(', ')} is an uncommitted file of yours (peers status)` : 'nothing of yours to commit (edited in this same command? the ledger lands after it ends: run peers commit on its own)')
+    const only = dash > 0 ? argv.slice(dash + 1).map(p => slash(p, winOf(p)).replace(/^\.\//, '').replace(/\/$/, '')) : null
+    const under = f => only.some(p => f === p || f.startsWith(`${p}/`))
+    const mine = only && argv.includes('--whole') ? [...dirtySet()].filter(under) : mineDirty(l).filter(f => !only || under(f))
+    if (!mine.length) die(only ? `none of ${only.join(', ')} is an uncommitted file of yours (peers status)` : 'nothing of yours to commit (edited in this same command? the ledger lands after it ends: run peers commit on its own)')
     const body = [msg, '', ...(l.ticket ? [`Ticket: ${l.ticket}`] : [])].join('\n')
     // A private index built from HEAD: a peer's staged files never ride along, and the
     // update-ref below lands only if HEAD did not move under us.

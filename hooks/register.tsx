@@ -69,6 +69,19 @@ const titleOf = (raw: string) => {
   return first.replace(/[:.]\s*$/, '').slice(0, 120).trim()
 }
 
+// This process's pid: its ~/.claude/sessions/<pid>.json holds the id the CLI, the server and peers use.
+let pid = 0
+// /resume swaps that id; $.session.id() keeps the first. Follow the file (WA-936).
+const sync = async ($: any) => {
+  if (!pid || !c) return
+  try {
+    const id = JSON.parse(await $.fs.read(`${home}/.claude/sessions/${pid}.json`)).sessionId
+    if (typeof id !== 'string' || id === session) return
+    await k($).rename(id)
+    session = id
+  } catch {}
+}
+
 const absolute = async ($: any, p: string) => ((p = slash(p, win)), isAbs(p) ? p : `${slash(await $.session.cwd(), win)}/${p}`)
 
 // One line, only when a peer touched this file after we last read it.
@@ -106,6 +119,7 @@ const withContext = (abs: string, r: any, line: string | null) => {
 let mineStarted: { id: string; started: number }[] = []
 
 const refreshPeers = async ($: any) => {
+  await sync($)
   const all = new Set<string>(k($).roots)
   if (cwdRoot) all.add(cwdRoot)
   const list: Peer[] = []
@@ -270,6 +284,16 @@ export const register: Register = on => {
     home = slash(raw, win)
     session = await $.session.id()
     c = core({ home, session, backlog: (await $.env.get('BACKLOG_CWD')) ?? '' })
+    // pid: the running-list file that names this id now; else node's parent (a launch that resumed).
+    try {
+      for (const f of await $.fs.list(`${home}/.claude/sessions`))
+        if (f.name.endsWith('.json') && JSON.parse(await $.fs.read(`${home}/.claude/sessions/${f.name}`)).sessionId === session) pid = Number(f.name.slice(0, -5)) || 0
+    } catch {}
+    if (!pid)
+      try {
+        pid = Number((await $.process.run(['node', '-p', 'process.ppid'], { timeoutMs: 5000 })).stdout.trim()) || 0
+      } catch {}
+    await sync($)
     cwdRoot = await k($).rootOf(slash(e.cwd, win))
     // Write around: a session's ledger is first written by its first edit or claim, never empty at start.
     if (cwdRoot) {
@@ -531,6 +555,7 @@ export const register: Register = on => {
 
   for (const tool of EDIT_TOOLS) {
     on('tool.call', { tool: tool as 'Edit' }, async ($, e: any, next) => {
+      await sync($)
       const abs = await absolute($, e.file_path ?? e.notebook_path ?? '')
       const at = await k($).locate(abs)
       const root: string | null = at?.root ?? null
@@ -576,6 +601,7 @@ export const register: Register = on => {
   }).catch(($, e, next) => next(e))
 
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+    await sync($)
     const cmd = e.command
     const cwd = await $.session.cwd()
     const list: string[] = await k($).commandRoots(cmd, cwd)

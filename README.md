@@ -98,6 +98,7 @@ peers status                # your dirty files, peers hidden
 peers diff
 peers commit -m "add thing" # your files, your hunks only, trailer Ticket: wa-b5f
 peers commit -m "x" -- a.ts # only those of your files
+peers commit -m "x" --whole -- src  # every dirty file under src, untracked too
 peers take map/new.c4       # claim a file peers missed: its diff lines go to your ledger
 peers files                 # your uncommitted files, for a formatter
 peers check                 # gate (or config `check`) on that commit in ~/worktrees/<repo>-check
@@ -144,7 +145,7 @@ A session's id is its agent and the first four characters of its session id: `cc
 
 ## Where the state lives
 
-`~/.claude/peers/<encoded repo root>/<session id>.json`. One file per session. No locks. A Claude session file counts only while its session is in Claude Code's running list (`~/.claude/sessions`), and for 12 hours at most. A terminal that moved its work to a background job counts as gone; the job shows under its own id. Peers lists only what `git status` lists, so `.gitignore`, `.git/info/exclude` and your global git ignore hide files from it too. A Codex or Cursor file, or any file with no such list, is ignored once marked ended. The band leaves out a peer with no open file and no task. Codex and Cursor ids carry a `codex_` or `cursor_` prefix.
+`~/.claude/peers/<encoded repo root>/<session id>.json`. One file per session. No locks. A Claude session file counts only while its session is in Claude Code's running list (`~/.claude/sessions`), and for 12 hours at most. A terminal that moved its work to a background job counts as gone; the job shows under its own id. Peers lists only what `git status` lists, so `.gitignore`, `.git/info/exclude` and your global git ignore hide files from it too. A Codex or Cursor file, or any file with no such list, is ignored once marked ended. A `/resume` gives the process a new id there; the mod follows it before each action and merges the old id's ledgers into the new one (0.17.2). The band leaves out a peer with no open file and no task. Codex and Cursor ids carry a `codex_` or `cursor_` prefix.
 
 `<session id>.actions.jsonl` beside it is the action log: one line per claim, commit, check and close, and per board write and each try of it. `peers log` prints it. A board write that fails (a comment, Jira down) waits there; the next `peers ready`, `claim`, `commit` or `close` sends it again, up to 5 tries.
 
