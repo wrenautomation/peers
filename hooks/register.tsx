@@ -1,6 +1,6 @@
 import { atom, read, update } from 'claude-code'
 import type { Register, RenderChildren } from 'claude-code'
-import type { Peer, Row, Span, ViewBody, ViewFocus, ViewFold, ViewIndex } from '../types'
+import type { Peer, Row, Span, ViewBody, ViewFocus, ViewFold, ViewIndex, ViewOrder } from '../types'
 import { core, dirOf, holds, idOf, nameOf, peerLinesLost, quote, uncommitted } from '../lib/core.mjs'
 import { isAbs, slash, winOf } from '../lib/path.mjs'
 import { platform } from '../lib/platform.mjs'
@@ -140,6 +140,17 @@ const refreshPeers = async ($: any) => {
   for (const p of list) seen.set(p.name, (seen.get(p.name) ?? 0) + 1)
   for (const p of list) if (seen.get(p.name)! > 1 && !p.name.endsWith(p.id)) p.name = `${p.name} ${p.id}`
   mineStarted = me
+  // The server's color order, so the band matches the pane and the page. No server: the band's own rule.
+  const was = await read($, orderAtom)
+  try {
+    const r = await $.http.fetch(`${VIEW}/api/order?sig=${was.sig}`)
+    if (r.ok && r.status !== 204) {
+      const o = JSON.parse(r.text) as ViewOrder
+      if (o.sig !== was.sig) await update($, orderAtom, () => o)
+    }
+  } catch {
+    if (was.order.length) await update($, orderAtom, () => ({ sig: '', order: [] }))
+  }
   const cur = await read($, peersAtom)
   if (JSON.stringify(cur) !== JSON.stringify(list)) await update($, peersAtom, () => list)
 }
@@ -152,6 +163,7 @@ const SHARED = '#a594f9'
 const MAX_LINES = 600
 
 const indexAtom = atom({ plugin: 'peers', key: 'index' } as const, { sig: '', repos: [] } as ViewIndex, { shape: 'index-2' })
+const orderAtom = atom({ plugin: 'peers', key: 'order' } as const, { sig: '', order: [] } as ViewOrder)
 const foldAtom = atom({ plugin: 'peers', key: 'fold' } as const, { flip: [] } as ViewFold, { shape: 'fold-1' })
 const helpAtom = atom({ plugin: 'peers', key: 'help' } as const, false)
 // The pane's list, or one box per session (v), as `peers tui`.
@@ -164,6 +176,22 @@ const bodyAtom = atom({ plugin: 'peers', key: 'body' } as const, null as ViewBod
 let tick: { cancel: () => void } | null = null
 let spawned = false
 let ensured = false
+
+// The server says when anything changes (/events?sig=1): the band and the open pane read at once, not at the
+// next 2 s tick. The tick stays for a session with no server. A node child, as the mod has no stream reader.
+const LISTEN = `const r = require('http').get('${VIEW}/events?sig=1', { agent: false }, res => { res.setEncoding('utf8'); res.on('data', d => process.stdout.write(d)); res.on('end', () => process.exit(0)) }); r.on('error', () => process.exit(1))`
+const listen = async ($: any) => {
+  for (;;) {
+    try {
+      for await (const piece of $.process.spawn({ argv: ['node', '-e', LISTEN] }))
+        if ('text' in piece && piece.stream === 'stdout') {
+          void refreshPeers($).catch(() => {})
+          if (tick) void poll($).catch(() => {})
+        }
+    } catch {}
+    await $.clock.sleep(5000)
+  }
+}
 
 // undefined: unchanged (204); null: not found.
 const getJson = async ($: any, path: string) => {
@@ -267,7 +295,9 @@ export const register: Register = on => {
     } catch {}
     // Fill the band now: a resumed session shows its peers before the first tick or turn.
     void refreshPeers($).catch(() => {})
-    $.clock.every(3000, () => refreshPeers($))
+    // Every 2 s, as the pane polls: the band and the pane change together.
+    $.clock.every(2000, () => refreshPeers($))
+    void listen($)
     // immediate: it opens mid-turn, never queued behind the running turn.
     await $.command.register({ name: 'peers-view', description: "Open or close the live view of every session's edits", immediate: true })
     return next(e)
@@ -527,6 +557,8 @@ export const register: Register = on => {
         said.delete(e.tool_use_id ?? '')
         await k($).record(root, [rel], d ? new Map([[rel, d]]) : undefined, t)
         seen.set(abs, await $.clock.now())
+        // The band shows this edit now, not at the next tick.
+        void refreshPeers($).catch(() => {})
       }
       const warn = lost.length
         ? `peers: this edit removed uncommitted lines of ${lost.map(x => `${nameOf(x.peer)} (${quote(x.lines)})`).join(', ')}. Put them back unless you agreed this with them.`
@@ -553,12 +585,14 @@ export const register: Register = on => {
     if (deny) return { deny }
 
     snap.at = await $.clock.now()
+    snap.cmd = cmd
     const r: any = await next(e)
     if (!r || r.deny !== undefined || r.isReadOnly) return r
     const hitPeers: string[] = await k($).after(snap, titleOf(e.description ?? '') || titleOf(said.get(e.tool_use_id ?? '') ?? ''))
     // `peers claim` and `peers close` change the ticket in the ledger; refresh the band.
     said.delete(e.tool_use_id ?? '')
     if (/\b(mine|peers) (claim|close)\b/.test(cmd)) await refreshPeers($)
+    else void refreshPeers($).catch(() => {})
     const warn = hitPeers.length
       ? `peers: this command changed uncommitted peer files: ${hitPeers.join(', ')}. Check them with git diff and put back any of their lines it broke.`
       : null
@@ -590,8 +624,11 @@ export const register: Register = on => {
     const now = await $.clock.now()
     const { Box, Text, Button } = $.ui.resolve(e)
     // Each peer's name in its pane color; the page's sessions decide it once the pane has read them.
-    const ix = await read($, indexAtom)
-    const col = colorRule(ix.repos.length ? ix.repos.flatMap(r => r.sessions) : [...mineStarted, ...peers.map(p => ({ id: p.session, started: p.started }))])
+    // One order with the pane and the page: the server's, then any session it has not seen yet, by start.
+    const local = [...mineStarted, ...peers.map(p => ({ id: p.session, started: p.started }))]
+    const { order } = await read($, orderAtom)
+    const late = local.filter(s => !order.includes(s.id)).sort((a, b) => a.started - b.started).map(s => s.id)
+    const col = colorRule(local, order.length ? [...order, ...new Set(late)] : undefined)
     const wide = await read($, wideAtom)
     const flip = () => void update($, wideAtom, w => !w)
     // nums as plain text, to measure the row; a peer's row (name, nums, title, what it last did) takes at most 2 rows.

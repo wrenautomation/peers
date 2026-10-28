@@ -97,6 +97,8 @@ peers claim wa-b5f          # bind a task, set In Progress
 peers status                # your dirty files, peers hidden
 peers diff
 peers commit -m "add thing" # your files, your hunks only, trailer Ticket: wa-b5f
+peers commit -m "x" -- a.ts # only those of your files
+peers take map/new.c4       # claim a file peers missed: its diff lines go to your ledger
 peers files                 # your uncommitted files, for a formatter
 peers check                 # gate (or config `check`) on that commit in ~/worktrees/<repo>-check
 peers close -r "shipped"   # Done, summary carries the sha
@@ -133,6 +135,8 @@ Up and down walk the rows with this in `~/.claude/keybindings.json` (by default 
 `peers view --install --host peers.example.com` keeps the server up under the OS supervisor: launchd on macOS (log `~/Library/Logs/peers-view.log`), systemd on Linux, the Startup folder on Windows (log `~/.claude/peers-view.log`). `--uninstall` stops it. A plugin update needs no reinstall: the next client replaces the older server. Point a Cloudflare tunnel with Access at 127.0.0.1:6421 for that host. Requests for the public host see only repos that are public on GitHub; any other host gets 403. This Mac sees all repos.
 
 Edit, then commit, in separate commands: the ledger records a Bash edit after that command ends, so `sed ... && peers commit` sees nothing to commit.
+
+The band takes its colors from the server, so it matches the pane and the page. The server hands each session its color by start time over all repos. The mod listens on `/events?sig=1`, which sends one short line per change, and reads `/api/order` again on each line (204 when nothing moved). It also reads again after each of its own edits and Bash commands. A session the server has not seen yet takes the next color locally. With the server down, the band falls back to a local rule.
 
 ## Names and titles
 
@@ -187,7 +191,8 @@ Why adapters in JS: the other choice was shell command lines in the config (no c
 - A formatter on your own shared file still rewrites the peer's lines there. Those changes count as yours.
 - `peers commit` runs `post-commit` hooks but not `pre-commit` or `commit-msg`.
 - `peers view` colors a line by its text. A line the ledger does not hold (too short, or written by a non-Claude edit) shows grey.
-- A Bash command sees every file that changed while it ran. Lines a peer recorded in that time stay theirs (0.3.2). A peer's own Bash edit records only when its command ends, so two long commands that edit the same file can still cross.
+- A Bash command sees every file that changed while it ran. Lines a peer recorded in that time stay theirs (0.3.2). A peer's own Bash edit records only when its command ends. When two commands run at once, the one whose text names the file (its path, or its base name of 4 or more characters) takes it (0.17.1). Two commands that both name it, or neither, fall back to the tighter time span. If a file still lands with the wrong session, `peers take <file>` claims it.
+- peers runs its own git calls with `--no-optional-locks`: a `git status` from peers never takes `index.lock` from your `git commit`.
 
 ## License
 

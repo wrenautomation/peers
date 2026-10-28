@@ -16,7 +16,7 @@ import { applyHunks, keys, owner, parseDiff, statusPaths } from '../lib/lines.mj
 
 const argv = process.argv.slice(2)
 const cmd = argv[0]
-const usage = `peers status | diff [--who [file...]] | commit -m "msg" [--whole] | check | ls | ready | claim <task> | close [-r reason] [--force] | log [n] | files | view [match...] | tui [match...]
+const usage = `peers status | diff [--who [file...]] | commit -m "msg" [--whole] [-- paths] | take <file...> | check | ls | ready | claim <task> | close [-r reason] [--force] | log [n] | files | view [match...] | tui [match...]
 Scope: the files this session edited (ledger kept by the peers mod). In a file a peer also edits, only your hunks
 (--whole takes the file as it is). Tasks: Backlog.md by default (\`backlog\` on PATH), or Jira or your own module: README, Task boards.
 view: a live page (127.0.0.1:6421) of every session's uncommitted edits, each in its author's color; /peers-view shows it in a pane.
@@ -80,8 +80,9 @@ function die(msg, code = 1) {
   process.stderr.write(msg + '\n')
   process.exit(code)
 }
+// No optional locks: a read never takes index.lock from a peer's commit or a release script.
 function git(args, opts = {}) {
-  return execFileSync('git', args, { encoding: 'utf8', stdio: [opts.input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'], maxBuffer: 1 << 28, ...opts })
+  return execFileSync('git', ['--no-optional-locks', ...args], { encoding: 'utf8', stdio: [opts.input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'], maxBuffer: 1 << 28, ...opts })
 }
 function load() {
   try {
@@ -211,6 +212,27 @@ const l = load()
 if (['ready', 'claim', 'commit', 'close'].includes(cmd)) await drain()
 
 switch (cmd) {
+  case 'take': {
+    // The file's uncommitted lines become yours too: for a file a command of a peer took by mistake
+    // (it ran while you wrote it). Their ledger keeps it; a line you both hold counts as yours in commit.
+    const named = argv.slice(1).map(p => slash(p, winOf(p)).replace(/^\.\//, ''))
+    if (!named.length) die('peers take <file...>: name the files')
+    const dirty = dirtySet()
+    const now = Date.now()
+    for (const f of named) {
+      if (!dirty.has(f)) die(`peers take: ${f} has no uncommitted change (paths are from the repo root)`)
+      const untracked = git(['ls-files', '--others', '--exclude-standard', '--', f]).trim()
+      const d = untracked ? null : parseDiff(git(['diff', '-U0', '--no-color', '--no-ext-diff', 'HEAD', '--', f]))
+      const added = [...(d ? keys(d.hunks.flatMap(h => h.plus).join('\n')) : existsSync(f) ? keys(readFileSync(f, 'utf8')) : [])]
+      const removed = [...(d ? keys(d.hunks.flatMap(h => h.minus).join('\n')) : [])]
+      const e = (l.files[f] ??= { first: now })
+      Object.assign(e, { from: now, last: now, named: true, added, removed })
+      console.log(`${f}: ${added.length} line(s) added, ${removed.length} removed, now yours`)
+    }
+    save(l)
+    act.log('take', { files: named })
+    break
+  }
   case 'files': {
     // Uncommitted only: the list to hand a formatter, `biome check --write $(peers files)`.
     for (const f of mineDirty(l)) console.log(f)
@@ -274,10 +296,15 @@ switch (cmd) {
     // A message file a blocked command never rewrote still holds the last one: never reuse it.
     const subject = msg.split('\n')[0].trim()
     const last = l.commits.at(-1)?.sha
-    const used = [git(['log', '-1', '--format=%s', 'HEAD']).trim(), last ? spawnSync('git', ['log', '-1', '--format=%s', last], { encoding: 'utf8' }).stdout?.trim() : '']
+    // Our last commit counts only while HEAD holds it: after a reset it is gone, and its subject is free again.
+    const held = last && spawnSync('git', ['merge-base', '--is-ancestor', last, 'HEAD']).status === 0
+    const used = [git(['log', '-1', '--format=%s', 'HEAD']).trim(), held ? spawnSync('git', ['log', '-1', '--format=%s', last], { encoding: 'utf8' }).stdout?.trim() : '']
     if (used.includes(subject)) die(`peers commit: "${subject}" is the subject of the last commit. Write a new message.`)
-    const mine = mineDirty(l)
-    if (!mine.length) die('nothing of yours to commit (edited in this same command? the ledger lands after it ends: run peers commit on its own)')
+    // `-- <paths>`: only these of your files (with --whole, a regenerated file stays out).
+    const dash = argv.indexOf('--')
+    const only = dash > 0 ? new Set(argv.slice(dash + 1).map(p => slash(p, winOf(p)).replace(/^\.\//, ''))) : null
+    const mine = mineDirty(l).filter(f => !only || only.has(f))
+    if (!mine.length) die(only ? `none of ${[...only].join(', ')} is an uncommitted file of yours (peers status)` : 'nothing of yours to commit (edited in this same command? the ledger lands after it ends: run peers commit on its own)')
     const body = [msg, '', ...(l.ticket ? [`Ticket: ${l.ticket}`] : [])].join('\n')
     // A private index built from HEAD: a peer's staged files never ride along, and the
     // update-ref below lands only if HEAD did not move under us.
@@ -464,6 +491,7 @@ switch (cmd) {
         : a.op === 'check' ? `check ${a.sha.slice(0, 7)} ${a.status === 0 ? 'passed' : `failed (${a.status})`}`
         : a.op === 'claim' ? `claim ${a.ticket}${a.title ? ` ${a.title}` : ''}`
         : a.op === 'close' ? `close ${a.ticket}: ${a.reason}`
+        : a.op === 'take' ? `take ${a.files.join(', ')}`
         : a.op
       if (what) console.log(`${t}  ${what}`)
     }
