@@ -47,6 +47,24 @@ Answer `y` to add the marketplace, then pick the user scope. The next session li
 
 The next session writes `~/.local/bin/peers.cmd` (cmd, PowerShell) and `~/.local/bin/peers` (Git Bash). Put `~/.local/bin` on PATH if it is not there. Node and Git for Windows must be on PATH. `peers view --install` is macOS only: on Windows the pane, the TUI and `peers view` start the server when none answers. CI runs the unit tests on Windows.
 
+### After an update
+
+Each client (the pane, the TUI, `peers view`) asks the server its version (`/api/ping`). If the server is older, the client stops it (`POST /api/stop`, local only) and starts its own. A launchd server comes back on the new code by itself.
+
+A server from before 0.16.7 has no stop. Stop it once by hand, then any client starts the new one.
+
+PowerShell:
+
+```
+Get-NetTCPConnection -LocalPort 6421 -State Listen | % { Stop-Process -Id $_.OwningProcess -Force }
+```
+
+macOS or Linux:
+
+```
+pkill -f "peers.mjs view --serve"
+```
+
 ## Other agents
 
 Codex and Cursor use hooks. Install the plugin once (it links `peers`), then add the hooks:

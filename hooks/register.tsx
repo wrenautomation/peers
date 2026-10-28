@@ -162,6 +162,7 @@ const focusAtom = atom({ plugin: 'peers', key: 'focus' } as const, null as ViewF
 const bodyAtom = atom({ plugin: 'peers', key: 'body' } as const, null as ViewBody, { shape: 'body-1' })
 let tick: { cancel: () => void } | null = null
 let spawned = false
+let ensured = false
 
 // undefined: unchanged (204); null: not found.
 const getJson = async ($: any, path: string) => {
@@ -223,6 +224,11 @@ const openPane = async ($: any) => {
   // Open before any await: a press counts as the person's ask only while its handler runs.
   const opened = await $.ui.open({ id: PANE, title: 'Peers', focus: true, closeOnEscape: true })
   if (!opened.isPlaced) $.ui.toast(`Peers: ${opened.reason}`)
+  // Once per session: a server older than this plugin (an update) stops and a new one starts. Not awaited: it may take 9 s.
+  if (!ensured) {
+    ensured = true
+    void $.process.run(['node', `${$.plugin.root}/bin/peers.mjs`, 'view', '--no-open'], { timeoutMs: 10000 }).catch(() => {})
+  }
   if (!tick) tick = $.clock.every(2000, () => void poll($).catch(() => {}))
   await poll($)
 }
