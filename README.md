@@ -125,7 +125,7 @@ A session's id is its agent and the first four characters of its session id: `cc
 
 `<session id>.actions.jsonl` beside it is the action log: one line per claim, commit, check and close, and per board write and each try of it. `peers log` prints it. A board write that fails (a comment, Jira down) waits there; the next `peers ready`, `claim`, `commit` or `close` sends it again, up to 5 tries.
 
-All of it stays on this machine; nothing goes to a cloud. A ledger keeps at most 20 edits per file. A long, busy session reaches about 1 MB; an action is about 200 bytes. Heavy use (10 sessions a day) comes to about 1 GB a year.
+All of it stays on this machine; nothing goes to a cloud. A ledger keeps at most 20 edits per file. A commit drops the line keys of the edits it took and keeps their times and titles, so the busiest ledger here dropped from 808 KB to 367 KB; an action is about 200 bytes. Heavy use (10 sessions a day) comes to about 1 GB a year.
 
 `~/.claude/peers-run/` holds hook state for the other agents: `snap/` (a pre-tool snapshot until its post-tool event, swept after 1 hour) and `agents/<pid>.json` (agent process to session, swept after 48 hours).
 

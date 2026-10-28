@@ -339,6 +339,13 @@ switch (cmd) {
       e.added = (e.added ?? []).filter(k => plus.has(k))
       e.removed = (e.removed ?? []).filter(k => minus.has(k))
     }
+    // An edit's line keys find its hunk's title while the hunk is uncommitted. Once committed they only fill
+    // the ledger (whole lines, rewritten on each edit): keep the time and title, drop the keys.
+    for (const [f, e] of Object.entries(l.files)) {
+      if (!e.edits?.some(x => x.k?.length)) continue
+      const left = l.commits.some(c => c.at >= e.last && c.files.includes(f)) ? new Set() : new Set([...(e.added ?? []), ...(e.removed ?? [])])
+      for (const x of e.edits) x.k = (x.k ?? []).filter(k => left.has(k))
+    }
     save(l)
     spawnSync('git', ['hook', 'run', '--ignore-missing', 'post-commit'], { stdio: 'inherit' })
     // Co-author and session trailers add nothing to the board or the log.
