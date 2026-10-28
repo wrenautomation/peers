@@ -45,11 +45,11 @@ Answer `y` to add the marketplace, then pick the user scope. The next session li
 
 ### Windows
 
-The next session writes `~/.local/bin/peers.cmd` (cmd, PowerShell) and `~/.local/bin/peers` (Git Bash). Put `~/.local/bin` on PATH if it is not there. Node and Git for Windows must be on PATH. `peers view --install` is macOS only: on Windows the pane, the TUI and `peers view` start the server when none answers. CI runs the unit tests on Windows.
+The next session writes `~/.local/bin/peers.cmd` (cmd, PowerShell) and `~/.local/bin/peers` (Git Bash). Put `~/.local/bin` on PATH if it is not there. Node and Git for Windows must be on PATH. `peers view --install` keeps the server up through a hidden script in the Startup folder. Without it, the pane, the TUI and `peers view` start the server when none answers. CI runs the unit tests on Windows and installs the supervisor there. `peers doctor` checks the setup.
 
 ### After an update
 
-Each client (the pane, the TUI, `peers view`) asks the server its version (`/api/ping`). If the server is older, the client stops it (`POST /api/stop`, local only) and starts its own. A launchd server comes back on the new code by itself.
+Each client (the pane, the TUI, `peers view`) asks the server its version (`/api/ping`). If the server is older, the client stops it (`POST /api/stop`, local only) and starts its own. A supervised server comes back on the new code by itself.
 
 A server from before 0.16.7 has no stop. Stop it once by hand, then any client starts the new one.
 
@@ -102,6 +102,7 @@ peers check                 # gate (or config `check`) on that commit in ~/workt
 peers close -r "shipped"   # Done, summary carries the sha
 peers log                   # this session's last actions and board writes
 peers ls                    # every live session in this repo
+peers doctor                # node, git, shim, PATH, server version, supervisor, board
 peers view                  # live page of every session's edits
 peers tui                   # the same view, full screen in a terminal
 peers tui wren ./lander     # only those repos (view and /peers-view take the same words)
@@ -129,7 +130,7 @@ Up and down walk the rows with this in `~/.claude/keybindings.json` (by default 
 
 `peers tui` shows the pane full screen in any terminal, with no agent session: a split beside Claude Code, Codex or Cursor. It draws the same rows as the pane (`lib/rows.mjs`) with Ink, reads the same server and starts it when it is down. Keys: `?` lists them, ↑↓ (or `j` `k`) move, Enter opens a file or folds a group, `d` document, `f` diff, `b` back, PgUp/PgDn or space page, `g` `G` top and end, `v` boxes, `q` quits. The diff has syntax color, line numbers and a bar in the author's color. `v` switches the list to boxes: one per session, in a grid of 1 to 3 columns by width. A box shows the name, id and task, its state (waits on you and for what, working, runs a command, idle), the title and what it does now; under them, all its open files, then its history of edits and commits. Every box has one height. The picked box scrolls: Shift+↑↓, or PgUp/PgDn (`u` and `n` on the focused box in the pane). The server keeps each session's last 50 events; set `{"boxScrollback": 200}` in `~/.claude/peers/config.json` to keep more. Sessions that wait on you come first, then working, then idle. Arrows pick a box; Enter opens that session in the list. The window moves only when the pick would leave the screen. The pane has the same view: `v` there too, and a press on a box's name opens that session in the list. Both draw `boxes()` from `lib/rows.mjs`; only the drawing differs (Ink here, Claude Code's elements in the pane). The focused row inverts its own colors, the same as the pointer's hover. The state comes from Claude Code's `~/.claude/sessions/<pid>.json`. Ink and React are bundled in `lib/vendor/ink.mjs` (MIT; licenses in `ink.LICENSE`).
 
-`peers view --install --host peers.example.com` keeps the server up under launchd (log in `~/Library/Logs/peers-view.log`); `--uninstall` stops it. Run `--install` again after a plugin update. Point a Cloudflare tunnel with Access at 127.0.0.1:6421 for that host. Requests for the public host see only repos that are public on GitHub; any other host gets 403. This Mac sees all repos.
+`peers view --install --host peers.example.com` keeps the server up under the OS supervisor: launchd on macOS (log `~/Library/Logs/peers-view.log`), systemd on Linux, the Startup folder on Windows (log `~/.claude/peers-view.log`). `--uninstall` stops it. A plugin update needs no reinstall: the next client replaces the older server. Point a Cloudflare tunnel with Access at 127.0.0.1:6421 for that host. Requests for the public host see only repos that are public on GitHub; any other host gets 403. This Mac sees all repos.
 
 Edit, then commit, in separate commands: the ledger records a Bash edit after that command ends, so `sed ... && peers commit` sees nothing to commit.
 

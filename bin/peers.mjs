@@ -11,6 +11,7 @@ import { isLive, nameOf, uncommitted } from '../lib/core.mjs'
 import { boardOf } from '../lib/board.mjs'
 import { configSync, runningSync } from '../lib/io.mjs'
 import { slash, winOf } from '../lib/path.mjs'
+import { platform } from '../lib/platform.mjs'
 import { applyHunks, keys, owner, parseDiff, statusPaths } from '../lib/lines.mjs'
 
 const argv = process.argv.slice(2)
@@ -22,7 +23,8 @@ view: a live page (127.0.0.1:6421) of every session's uncommitted edits, each in
 tui: the same view full screen in any terminal (no agent session needed).
   match: only the repos it names. A path (., ../lander, ~/x) is that folder; a name is a repo name, part of one,
   or a folder in the path (wren_automation = every repo in it). Same words in /peers-view <match...>.
-  view --install [--host <public host>] keeps it up under launchd; view --uninstall stops that.
+  view --install [--host <public host>] keeps it up (launchd, systemd or the Windows Startup folder); view --uninstall stops that.
+  doctor checks node, git, the shim, PATH, the server's version, the supervisor and the board.
 Other agents: peers install codex|cursor [--project] [--uninstall] adds the hooks; the agent runs peers hook <agent>.
 Env: PEERS_SESSION overrides the session id.`
 
@@ -50,6 +52,7 @@ if (cmd === 'install') {
   console.log(`${argv.includes('--uninstall') ? 'removed from' : 'hooks in'} ${path}`)
   process.exit(0)
 }
+if (cmd === 'doctor') process.exit(await (await import('../lib/doctor.mjs')).doctor())
 const session = process.env.PEERS_SESSION || process.env.CLAUDE_CODE_SESSION_ID || (await import('../lib/hook.mjs')).findSession(homedir())
 if (cmd === 'tui') await (await import('../lib/tui.mjs')).tui()
 if (cmd === 'view') {
@@ -373,7 +376,8 @@ switch (cmd) {
     console.log(`peers check: ${wt} at ${git(['-C', wt, 'log', '-1', '--format=%h %s']).trim()}`)
     // Every run: a commit that moves the lockfile or a package.json needs fresh node_modules; a no-op otherwise.
     if (existsSync(join(wt, 'pnpm-lock.yaml'))) {
-      const i = spawnSync('pnpm', ['install', '--frozen-lockfile', '--prefer-offline'], { cwd: wt, stdio: 'inherit', shell: process.platform === 'win32' })
+      const pn = platform(process.platform).npmCommand('pnpm', ['install', '--frozen-lockfile', '--prefer-offline'])
+      const i = spawnSync(pn.cmd, pn.args, { cwd: wt, stdio: 'inherit', shell: pn.shell })
       if (i.status !== 0) die(`peers check: pnpm install failed in ${wt}`)
     }
     // `check` in the config (a shell line, as `npm test`), else the repo's gate script, else the commit's stat.

@@ -19,3 +19,18 @@ jobs:
       - run: node lib/board.test.mjs
       - run: node lib/actions.test.mjs
       - run: node lib/view.test.mjs
+      - run: node lib/platform.test.mjs
+      # The supervisor for real on Windows: write the shims as the mod does, install, check, remove.
+      - if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          node --input-type=module -e "
+            import { homedir } from 'node:os'; import { mkdirSync, writeFileSync } from 'node:fs'; import { resolve } from 'node:path'
+            import { homeOf, slash } from './lib/path.mjs'; import { platform } from './lib/platform.mjs'
+            const s = platform('win32').shims(homeOf(homedir()), slash(resolve('bin/peers.mjs'), true))
+            mkdirSync(s.dir, { recursive: true }); for (const [p, t] of s.files) writeFileSync(p, t)"
+          node bin/peers.mjs view --install
+          node bin/peers.mjs doctor || true
+          node bin/peers.mjs doctor | grep -E 'server: .*supervised'
+          node bin/peers.mjs view --uninstall
+          ! curl -s -m 2 http://127.0.0.1:6421/api/ping

@@ -3,6 +3,7 @@ import type { Register, RenderChildren } from 'claude-code'
 import type { Peer, Row, Span, ViewBody, ViewFocus, ViewFold, ViewIndex } from '../types'
 import { core, dirOf, holds, idOf, nameOf, peerLinesLost, quote, uncommitted } from '../lib/core.mjs'
 import { isAbs, slash, winOf } from '../lib/path.mjs'
+import { platform } from '../lib/platform.mjs'
 import { delta } from '../lib/lines.mjs'
 import { ADD, DEL, HELP, ago, boxCols, boxWindow, boxes, cast, fit, colorRule, docRow, fileHead, gapText, gaps, helpRows, hunkHead, listRows, onlyQuery, terms } from '../lib/rows.mjs'
 
@@ -255,18 +256,14 @@ export const register: Register = on => {
         if (l?.ended && holds(l)) await k($).saveMine(l)
       }
     } catch {}
-    // `peers` on PATH: the one install step beyond /plugin install. Windows has no symlink without admin:
-    // a .cmd for cmd and PowerShell, an sh script for Git Bash (Claude Code's Bash tool).
+    // `peers` on PATH: the one install step beyond /plugin install. lib/platform.mjs says which files and links.
+    // The mod sees no OS name, only the home folder's shape; every POSIX shares linux's shims.
     try {
-      const bin = slash($.plugin.root, win) + '/bin/peers.mjs'
-      if (win) {
-        await $.process.run(['node', '-e', 'require("fs").mkdirSync(process.argv[1], { recursive: true })', `${home}/.local/bin`], { timeoutMs: 5000 })
-        await $.fs.write(`${home}/.local/bin/peers.cmd`, `@node "${bin.replace(/\//g, '\\')}" %*\r\n`)
-        await $.fs.write(`${home}/.local/bin/peers`, `#!/bin/sh\nexec node "${bin}" "$@"\n`)
-      } else {
-        await $.process.run(['mkdir', '-p', `${home}/.local/bin`], { timeoutMs: 5000 })
-        await $.process.run(['ln', '-sfn', bin, `${home}/.local/bin/peers`], { timeoutMs: 5000 })
-      }
+      const s = platform(win ? 'win32' : 'linux').shims(home, slash($.plugin.root, win) + '/bin/peers.mjs')
+      await $.process.run(['node', '-e', 'require("fs").mkdirSync(process.argv[1], { recursive: true })', s.dir], { timeoutMs: 5000 })
+      for (const [path, text] of s.files) await $.fs.write(path, text)
+      for (const [target, path] of s.links)
+        await $.process.run(['node', '-e', 'const f = require("fs"); f.rmSync(process.argv[2], { force: true }); f.symlinkSync(process.argv[1], process.argv[2])', target, path], { timeoutMs: 5000 })
     } catch {}
     // Fill the band now: a resumed session shows its peers before the first tick or turn.
     void refreshPeers($).catch(() => {})
