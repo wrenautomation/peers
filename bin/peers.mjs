@@ -26,6 +26,7 @@ tui: the same view full screen in any terminal (no agent session needed).
   view --install [--host <public host>] keeps it up (launchd, systemd or the Windows Startup folder); view --uninstall stops that.
   doctor checks node, git, the shim, PATH, the server's version, the supervisor and the board.
 Other agents: peers install codex|cursor [--project] [--uninstall] adds the hooks; the agent runs peers hook <agent>.
+Output: one summary line; -v lists each file, --json (status, take) prints one object. A file list may be - (read from stdin).
 Env: PEERS_SESSION overrides the session id.`
 
 if (!cmd || cmd === '-h' || cmd === '--help') die(usage, 0)
@@ -75,6 +76,22 @@ const dir = join(homedir(), '.claude', 'peers', encodeURIComponent(root))
 const own = join(dir, `${session}.json`)
 // The action log and the board's outbox: lib/actions.mjs.
 const act = actions(join(dir, `${session}.actions.jsonl`))
+
+// Output like git's oneline: a summary line by default, each file under -v, a JSON object under --json.
+const FLAGS = new Set(['-v', '--verbose', '--json'])
+const verbose = argv.includes('-v') || argv.includes('--verbose')
+const asJson = argv.includes('--json')
+// Paths from args; `-` reads more from stdin, one per line: `git diff --name-only | peers take -`.
+function pathsOf(list) {
+  const out = []
+  for (const a of list) {
+    if (FLAGS.has(a)) continue
+    if (a === '-') out.push(...readFileSync(0, 'utf8').split('\n').map(s => s.trim()).filter(Boolean))
+    else out.push(a)
+  }
+  return out.map(p => slash(p, winOf(p)).replace(/^\.\//, ''))
+}
+const few = (xs, n = 3) => xs.slice(0, n).join(', ') + (xs.length > n ? ` and ${xs.length - n} more` : '')
 
 function die(msg, code = 1) {
   process.stderr.write(msg + '\n')
@@ -218,22 +235,33 @@ switch (cmd) {
   case 'take': {
     // The file's uncommitted lines become yours too: for a file a command of a peer took by mistake
     // (it ran while you wrote it). Their ledger keeps it; a line you both hold counts as yours in commit.
-    const named = argv.slice(1).map(p => slash(p, winOf(p)).replace(/^\.\//, ''))
-    if (!named.length) die('peers take <file...>: name the files')
+    const named = pathsOf(argv.slice(1))
+    if (!named.length) die('peers take <file...|->: name the files, or - to read them from stdin')
     const dirty = dirtySet()
     const now = Date.now()
-    for (const f of named) {
-      if (!dirty.has(f)) die(`peers take: ${f} has no uncommitted change (paths are from the repo root)`)
+    const took = []
+    const skipped = named.filter(f => !dirty.has(f))
+    for (const f of named.filter(f => dirty.has(f))) {
       const untracked = git(['ls-files', '--others', '--exclude-standard', '--', f]).trim()
       const d = untracked ? null : parseDiff(git(['diff', '-U0', '--no-color', '--no-ext-diff', 'HEAD', '--', f]))
       const added = [...(d ? keys(d.hunks.flatMap(h => h.plus).join('\n')) : existsSync(f) ? keys(readFileSync(f, 'utf8')) : [])]
       const removed = [...(d ? keys(d.hunks.flatMap(h => h.minus).join('\n')) : [])]
       const e = (l.files[f] ??= { first: now })
       Object.assign(e, { from: now, last: now, named: true, added, removed })
-      console.log(`${f}: ${added.length} line(s) added, ${removed.length} removed, now yours`)
+      took.push({ file: f, added: added.length, removed: removed.length })
     }
-    save(l)
-    act.log('take', { files: named })
+    if (took.length) {
+      save(l)
+      act.log('take', { files: took.map(t => t.file) })
+    }
+    if (asJson) console.log(JSON.stringify({ took, skipped }))
+    else {
+      if (verbose) for (const t of took) console.log(`${t.file}: +${t.added} -${t.removed} lines, now yours`)
+      const sum = (k) => took.reduce((n, t) => n + t[k], 0)
+      if (took.length) console.log(`took ${took.length} file${took.length === 1 ? '' : 's'} (+${sum('added')} -${sum('removed')} lines)`)
+      if (skipped.length) process.stderr.write(`skipped ${skipped.length}, no uncommitted change (paths are from the repo root): ${few(skipped)}\n`)
+    }
+    if (!took.length) process.exitCode = 1
     break
   }
   case 'files': {
@@ -249,15 +277,34 @@ switch (cmd) {
     const shared = mine.filter(f => peerFiles.has(f))
     const others = [...all].filter(f => !l.files[f])
     const orphans = others.filter(f => !peerFiles.has(f))
-    if (mine.length) process.stdout.write(git(['status', '--short', '--', ...mine]))
-    else console.log('nothing of yours is uncommitted')
+    const live = peers()
+    const sh = shared.map(f => ({ f, s: split(f, live) })).filter(x => x.s.who)
+    if (asJson) {
+      console.log(JSON.stringify({
+        mine,
+        shared: sh.map(({ f, s }) => ({ file: f, with: s.who, whole: !!s.whole, none: !!s.none, mine: s.mine?.length ?? 0, theirs: s.theirs?.length ?? 0, mixed: s.mixed?.length ?? 0 })),
+        hidden: others.length - orphans.length,
+        orphans,
+      }))
+      break
+    }
+    const CAP = 20
+    if (mine.length) {
+      const rows = git(['status', '--short', '--', ...mine]).trimEnd().split('\n')
+      console.log((verbose ? rows : rows.slice(0, CAP)).join('\n'))
+      if (!verbose && rows.length > CAP) console.log(`... ${rows.length - CAP} more (-v)`)
+    } else console.log('nothing of yours is uncommitted')
     const note = []
     if (others.length - orphans.length) note.push(`${others.length - orphans.length} peer file(s) hidden`)
     if (orphans.length) note.push(`${orphans.length} file(s) nobody claims`)
-    const live = peers()
-    for (const f of shared) {
-      const s = split(f, live)
-      if (s.who) note.push(s.whole ? `${f} shared with ${s.who.join(', ')} (whole file${s.none ? ', no lines of yours: commit skips it' : ''})` : `${f}: ${s.mine.length} hunk(s) yours, ${s.theirs.length} ${s.who.join(', ')}'s${s.mixed.length ? `, ${s.mixed.length} mixed` : ''}`)
+    const whole = sh.filter(x => x.s.whole)
+    const none = whole.filter(x => x.s.none)
+    if (verbose)
+      for (const { f, s } of sh)
+        note.push(s.whole ? `${f} shared with ${s.who.join(', ')} (whole file${s.none ? ', no lines of yours: commit skips it' : ''})` : `${f}: ${s.mine.length} hunk(s) yours, ${s.theirs.length} ${s.who.join(', ')}'s${s.mixed.length ? `, ${s.mixed.length} mixed` : ''}`)
+    else if (sh.length) {
+      const who = [...new Set(sh.flatMap(x => x.s.who))].join(', ')
+      note.push(`${sh.length} shared with ${who}: ${sh.length - whole.length} by hunk, ${whole.length} whole` + (none.length ? `, ${none.length} with no lines of yours (commit skips them: ${few(none.map(x => x.f))})` : '') + ' (-v for each)')
     }
     if (note.length) console.log(`(${note.join('; ')})`)
     break
@@ -265,7 +312,7 @@ switch (cmd) {
   case 'diff': {
     if (argv.includes('--who')) {
       // Every hunk of the named files (default: all of yours), headed by whose it is.
-      const named = argv.slice(1).filter(a => a !== '--who')
+      const named = pathsOf(argv.slice(1).filter(a => a !== '--who'))
       const live = peers()
       for (const f of named.length ? named : mineDirty(l)) {
         const s = split(f, live)
@@ -306,7 +353,7 @@ switch (cmd) {
     // `-- <paths>`: only these of your files (with --whole, a regenerated file stays out).
     // --whole with paths: every dirty file under them, in the ledger or not (an untracked file it missed).
     const dash = argv.indexOf('--')
-    const only = dash > 0 ? argv.slice(dash + 1).map(p => slash(p, winOf(p)).replace(/^\.\//, '').replace(/\/$/, '')) : null
+    const only = dash > 0 ? pathsOf(argv.slice(dash + 1)).map(p => p.replace(/\/$/, '')) : null
     const under = f => only.some(p => f === p || f.startsWith(`${p}/`))
     const mine = only && argv.includes('--whole') ? [...dirtySet()].filter(under) : mineDirty(l).filter(f => !only || under(f))
     if (!mine.length) die(only ? `none of ${only.join(', ')} is an uncommitted file of yours (peers status)` : 'nothing of yours to commit (edited in this same command? the ledger lands after it ends: run peers commit on its own)')
@@ -387,7 +434,8 @@ switch (cmd) {
     const told = msg.replace(/^(Co-Authored-By|Claude-Session):.*\n?/gim, '').trimEnd()
     const n = l.commits.at(-1).files.length
     console.log(`${sha.slice(0, 7)} ${told} (${n} file${n === 1 ? '' : 's'})`)
-    for (const x of notes) console.log(`note: ${x}`)
+    for (const x of verbose ? notes : notes.slice(0, 3)) console.log(`note: ${x}`)
+    if (!verbose && notes.length > 3) console.log(`note: ${notes.length - 3} more (-v)`)
     act.log('commit', { sha, files: l.commits.at(-1).files, ticket: l.ticket, t: told.split('\n')[0] })
     if (l.ticket) {
       const r = await act.send('note', [l.ticket, `${sha.slice(0, 7)} ${told}`], send)

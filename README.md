@@ -100,6 +100,7 @@ peers commit -m "add thing" # your files, your hunks only, trailer Ticket: wa-b5
 peers commit -m "x" -- a.ts # only those of your files
 peers commit -m "x" --whole -- src  # every dirty file under src, untracked too
 peers take map/new.c4       # claim a file peers missed: its diff lines go to your ledger
+git diff --name-only | peers take -   # a file list may be - (stdin); a done peer's files too
 peers files                 # your uncommitted files, for a formatter
 peers check                 # gate (or config `check`) on that commit in ~/worktrees/<repo>-check
 peers close -r "shipped"   # Done, summary carries the sha
@@ -110,6 +111,8 @@ peers view                  # live page of every session's edits
 peers tui                   # the same view, full screen in a terminal
 peers tui wren ./lander     # only those repos (view and /peers-view take the same words)
 ```
+
+Output is one summary line, like `git log --oneline`: `took 107 files (+40300 -1920 lines)`. `-v` lists each file; `--json` (status, take) prints one object for a script (0.18.0).
 
 A filter word is a path or a name. A path (`.`, `../lander`, `~/x`) shows the repo it is, the repos under it, or the repo that holds it. A name shows, by the first tier that matches: the repo of that name, a repo whose name holds it, a folder of that name in the repo's path, a folder whose name holds it. Case does not matter. So `wren` is the wren repo, `auto` is autobrowse and `wren_automation` is every repo in that folder. Several words add up. The top row shows the words and the repos they matched. When nothing matches, it lists the live repos. There is no config file: the repos come from the live ledgers (see Where the state lives).
 
