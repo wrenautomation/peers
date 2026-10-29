@@ -182,7 +182,10 @@ const holders = ticket => {
 }
 // Line sets of a file: mine, and every live peer's that has not committed it yet.
 // f's lines that differ from HEAD: a peer whose lines are all in HEAD (committed by any route) holds nothing.
-const liveOf = f => delta(spawnSync('git', ['show', `HEAD:${f}`], { encoding: 'utf8' }).stdout ?? '', existsSync(f) ? readFileSync(f, 'utf8') : '')
+const liveOf = f => ({
+  ...delta(spawnSync('git', ['show', `HEAD:${f}`], { encoding: 'utf8' }).stdout ?? '', existsSync(f) ? readFileSync(f, 'utf8') : ''),
+  at: Number(spawnSync('git', ['log', '-1', '--format=%ct', 'HEAD', '--', f], { encoding: 'utf8' }).stdout?.trim()) * 1000 || 0,
+})
 function lineSets(f, peers) {
   const mine = { added: new Set(l.files[f]?.added ?? []), removed: new Set(l.files[f]?.removed ?? []) }
   const theirs = { added: new Set(), removed: new Set(), who: [], blind: false }
@@ -212,6 +215,25 @@ function split(f, live) {
   const by = { mine: [], theirs: [], mixed: [] }
   for (const h of d.hunks) by[owner(h, mine, theirs, theirs.blind)].push(h)
   return { whole: false, who: theirs.who, head: d.head, ...by }
+}
+// The ticket's commits as they stand at close: by trailer, reachable from HEAD, in each repo this session has a ledger in.
+// A sha kept at commit dies in a squash or a rebase (WA-970, WA-975); the trailer survives them.
+function ticketShas(ticket) {
+  const peersDir = join(homedir(), '.claude', 'peers')
+  const roots = existsSync(peersDir) ? readdirSync(peersDir).filter(d => existsSync(join(peersDir, d, `${session}.json`))).map(decodeURIComponent) : [root]
+  const esc = ticket.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const found = []
+  for (const r of roots) {
+    const out = spawnSync('git', ['--no-optional-locks', '-C', r, 'log', '-E', `--grep=^Ticket: ${esc}$`, '--format=%h', '-n', '8', 'HEAD'], { encoding: 'utf8' })
+    const shas = out.status === 0 ? out.stdout.split('\n').filter(Boolean).reverse() : []
+    if (shas.length) found.push({ name: basename(r), shas })
+  }
+  // No trailer (a commit made without a bound ticket): the ledger's last sha, while HEAD still has it.
+  if (!found.length) {
+    const last = l.commits.at(-1)?.sha
+    return last && spawnSync('git', ['--no-optional-locks', 'merge-base', '--is-ancestor', last, 'HEAD']).status === 0 ? ` (${last.slice(0, 7)})` : ''
+  }
+  return ` (${found.map(f => (found.length > 1 ? `${f.name} ` : '') + f.shas.join(', ')).join('; ')})`
 }
 function withIndexRetry(fn) {
   for (let i = 0; ; i++) {
@@ -513,8 +535,7 @@ switch (cmd) {
   case 'close': {
     if (!l.ticket) die('no ticket bound: peers claim <ticket> first')
     const i = argv.indexOf('-r')
-    const last = l.commits.at(-1)
-    const reason = (i > 0 ? argv[i + 1] : 'done') + (last ? ` (${last.sha.slice(0, 7)})` : '')
+    const reason = (i > 0 ? argv[i + 1] : 'done') + ticketShas(l.ticket)
     if (!argv.includes('--force')) {
       const still = holders(l.ticket)
       if (still.length) die(`peers close: ${still.map(nameOf).join(', ')} also works on ${l.ticket}. Close it there last, or --force.`)
