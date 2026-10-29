@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { Register, RenderChildren } from 'claude-code'
 import type { Peer, Row, Span, ViewBody, ViewFocus, ViewFold, ViewIndex, ViewOrder } from '../types'
-import { core, dirOf, holds, idOf, nameOf, peerLinesLost, quote, uncommitted } from '../lib/core.mjs'
+import { core, dirOf, holds, idOf, nameOf, peerLinesLost, quote } from '../lib/core.mjs'
 import { isAbs, slash, winOf } from '../lib/path.mjs'
 import { platform } from '../lib/platform.mjs'
 import { delta } from '../lib/lines.mjs'
@@ -131,11 +131,12 @@ const refreshPeers = async ($: any) => {
     const open = await k($).openFiles(root, [mine, ...peers].map(p => `${p.session}@${p.updated}`).join(','))
     const tag = all.size > 1 ? `${root.slice(root.lastIndexOf('/') + 1)}/` : ''
     for (const p of peers) {
-      // Open files only, as the pane lists them: dirty in git and not taken by their own commit since.
-      const files = Object.keys(p.files).filter(f => open.has(f) && uncommitted(p, f))
+      // Open files, as the guard counts them: dirty, not taken by their own commit, lines not in HEAD.
+      const files: string[] = await k($).heldFiles(root, p, open)
       // Nothing open and no task: a `0|0` row says nothing.
       if (!files.length && !p.ticket) continue
-      const sharedFiles = files.filter(f => mine.files[f])
+      const minesHeld = new Set<string>(await k($).heldFiles(root, mine, new Set(files)))
+      const sharedFiles = files.filter(f => minesHeld.has(f))
       const shared = sharedFiles.length
       const doing = files.flatMap(f => p.files[f]?.edits ?? []).reduce<{ at: number; t: string } | null>((m, x) => (!m || x.at > m.at ? x : m), null)?.t
       const last = files.reduce((m, f) => Math.max(m, p.files[f]?.last ?? 0), p.updated)

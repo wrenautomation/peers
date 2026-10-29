@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
 import { actions } from '../lib/actions.mjs'
-import { holding, isLive, nameOf, uncommitted } from '../lib/core.mjs'
+import { holding, isLive, nameOf } from '../lib/core.mjs'
 import { boardOf } from '../lib/board.mjs'
 import { configSync, runningSync } from '../lib/io.mjs'
 import { slash, winOf } from '../lib/path.mjs'
@@ -476,8 +476,8 @@ switch (cmd) {
     const now = Date.now()
     const dirty = dirtySet()
     for (const p of rows) {
-      // Open files, as the band and the pane count them: dirty and not taken by their own commit since.
-      const files = Object.keys(p.files).filter(f => dirty.has(f) && uncommitted(p, f))
+      // Open files, as the band and the guard count them: dirty, not taken by their own commit, lines not in HEAD.
+      const files = Object.keys(p.files).filter(f => dirty.has(f) && holding(p, f, liveOf(f)))
       const last = Object.keys(p.files).reduce((m, f) => Math.max(m, p.files[f].last), p.updated)
       console.log(
         `${p.me ? '*' : ' '} ${nameOf(p).padEnd(12)} ${String(files.length).padStart(3)} open  ${Math.round((now - last) / 60000)}m ago  ${p.commits.length} commits`,
