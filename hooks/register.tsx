@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { Register, RenderChildren } from 'claude-code'
 import type { Peer, Row, Span, ViewBody, ViewFocus, ViewFold, ViewIndex, ViewOrder } from '../types'
-import { core, dirOf, holds, idOf, nameOf, peerLinesLost, quote } from '../lib/core.mjs'
+import { MODS, core, dirOf, holds, idOf, nameOf, peerLinesLost, quote } from '../lib/core.mjs'
 import { isAbs, slash, winOf } from '../lib/path.mjs'
 import { platform } from '../lib/platform.mjs'
 import { delta } from '../lib/lines.mjs'
@@ -295,6 +295,12 @@ export const register: Register = on => {
         pid = Number((await $.process.run(['node', '-p', 'process.ppid'], { timeoutMs: 5000 })).stdout.trim()) || 0
       } catch {}
     await sync($)
+    // A reload runs session.start again: the file then names the new version.
+    if (pid)
+      try {
+        const { version } = JSON.parse(await $.fs.read(`${$.plugin.root}/.claude-plugin/plugin.json`))
+        await $.fs.write(`${MODS(home)}/${pid}.json`, JSON.stringify({ pid, session, version, at: await $.clock.now() }))
+      } catch {}
     cwdRoot = await k($).rootOf(slash(e.cwd, win))
     // Write around: a session's ledger is first written by its first edit or claim, never empty at start.
     if (cwdRoot) {
